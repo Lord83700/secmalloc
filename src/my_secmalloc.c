@@ -6,6 +6,10 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#define MAX_META_POOL_SIZE (1 << 30)
+#define MAX_DATA_POOL_SIZE (64l << 30)
+
+size_t struct_size = sizeof(struct metadata_t);
 void *data_pool = NULL;
 size_t meta_size = 0;
 size_t data_size = 0;
@@ -36,7 +40,7 @@ void init_metapool(void) {
   meta_pool[0].state = NONE;
   meta_pool[0].datasize = 0;
   meta_pool[0].csize = 0;
-  // meta_pool[0].canary = 0;
+  //meta_pool[0].canary = 0;
   meta_pool[0].next = NULL;
 }
 void init_datapool(void) {
@@ -109,11 +113,11 @@ size_t get_remain_size_of_metapool(){
 
   while (current->next != NULL)
   {
-    size_occupied += sizeof(struct metadata_t);
+    size_occupied += struct_size;
     current = current->next;
   }
 
-  size_occupied+= sizeof(struct metadata_t);
+  size_occupied += struct_size;
 
   return meta_size - size_occupied;
 }
@@ -153,9 +157,25 @@ void *my_malloc(size_t size) {
   }
   //Sinon on cree un nouveau bloc mais verifier avant si la taille de nos bloc depasse pas data_size et metadata_size
   else {
-    if (size >= remain_size_datapool && sizeof(struct metadata_t) >= remain_size_metapool)
+    if (size >= remain_size_datapool)
     {
-      // Expend notre pool
+      // Expend notre pool de data
+      size_t new_data_size = data_size + (size + 512);
+      if (new_data_size >= MAX_DATA_POOL_SIZE)
+      {
+        return NULL;
+      }
+      data_size = new_data_size;
+    }
+    if (struct_size >= remain_size_metapool)
+    {
+      //Expend notre pool de metadata
+      size_t new_metadata_size = meta_size + (struct_size + 512);
+      if (new_metadata_size >= MAX_META_POOL_SIZE)
+      {
+        return NULL;
+      }
+      meta_size = new_metadata_size;
     }
     //Cree un nouveau bloc
   }
