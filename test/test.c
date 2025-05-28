@@ -1,16 +1,17 @@
-#include <criterion/assert.h>
-#include <criterion/internal/assert.h>
-#include <criterion/logging.h>
+#define _GNU_SOURCE
+#include <sys/mman.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <criterion/criterion.h>
-#define _GNU_SOURCE
 #include "../include/my_secmalloc.private.h"
-#include <sys/mman.h>
 #include <unistd.h>
 #include <string.h>
-
+#include <criterion/assert.h>
+#include <criterion/internal/assert.h>
+#include <criterion/internal/test.h>
+#include <criterion/logging.h>
+#
 Test(mmap, simple) {
   void *ptr = mmap(NULL, 4096, PROT_READ | PROT_WRITE,
                    MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
@@ -108,12 +109,18 @@ Test(add_new_meta_block, test_init) {
   cr_expect(new_block->state == NONE);
 
   cr_expect(meta_pool[0].next == new_block);
-  cr_expect(new_block->next == NULL);
+
+  struct metadata_t *second_block = add_new_metadata_block();
+  cr_expect(second_block != MAP_FAILED);
+  cr_expect(meta_nb == 3);
+  cr_expect(second_block->state == NONE);
+
+  cr_expect(new_block->next == second_block);
 
   cr_log_info("[ADD-BLOCK] METADATA POOL MAPPE %p\n", meta_pool);
   cr_log_info("[ADD-BLOCK] METADATA MAPPE %p\n", &meta_pool[0]);
-  cr_log_info("[ADD-BLOCK] METADATA NEXT %p\n", meta_pool[0].next);
-  cr_log_info("[ADD-BLOCK] NEW BLOCK MAPPE %p\n", new_block);
+  cr_log_info("[ADD-BLOCK] METADATA NEXT %p\n", &meta_pool[1]);
+  cr_log_info("[ADD-BLOCK] NEW BLOCK MAPPE %p\n", &meta_pool[2]);
   cr_log_info("[ADD-BLOCK] SIZEOF BLOCK %ld\n", sizeof(meta_pool[0]));
 }
 
@@ -201,4 +208,29 @@ Test(check_remain_size, test_init){
   cr_expect(remain_size_metapool == meta_size-216);
   cr_expect(remain_size_datapool == data_size-120);
 
+}
+Test(check_malloc,test_init){
+  extern struct metadata_t *meta_pool;
+  extern void *data_pool;
+
+
+  char *my_data_block = my_malloc(42);
+
+  cr_log_info("[MALLOC] Meta pool %p\n", meta_pool);
+  cr_log_info("[MALLOC] Data pool %p\n", data_pool);
+  cr_log_info("[MALLOC] DATA BLOCK %p\n", my_data_block);
+  cr_expect(my_data_block != NULL);
+  my_data_block = strcpy(my_data_block, "Test1212");
+  cr_expect(strcmp(my_data_block, "Test1212")==0);
+  cr_log_info("[MALLOC] CHAR %s\n", my_data_block);
+
+  char *my_second_data_block = my_malloc(42);
+
+  cr_log_info("[MALLOC] SECOND DATA BLOCK %p\n", my_second_data_block);
+  cr_expect(my_second_data_block != NULL);
+  cr_expect(my_second_data_block == (my_data_block + 74));
+
+  my_second_data_block = "Test1313";
+  cr_expect(strcmp(my_second_data_block, "Test1313")==0);
+  cr_log_info("[MALLOC] SECOND CHAR %s\n", my_second_data_block);
 }

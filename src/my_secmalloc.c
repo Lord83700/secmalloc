@@ -1,13 +1,16 @@
-#include <stddef.h>
 #define _GNU_SOURCE
 #include "../include/my_secmalloc.private.h"
 #include <alloca.h>
+#include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <stdint.h>
 #define MAX_META_POOL_SIZE (1 << 30)
 #define MAX_DATA_POOL_SIZE (64l << 30)
+#define CANARY_SIZE 32
 
 size_t struct_size = sizeof(struct metadata_t);
 void *data_pool = NULL;
@@ -36,12 +39,12 @@ void init_metapool(void) {
   meta_nb += 1;
 
   // Initie un premier block a 0 pour ensuite les parcourir
-  meta_pool[0].data = NULL;
-  meta_pool[0].state = NONE;
-  meta_pool[0].datasize = 0;
-  meta_pool[0].csize = 0;
-  //meta_pool[0].canary = 0;
-  meta_pool[0].next = NULL;
+  meta_pool->data = NULL;
+  meta_pool->state = NONE;
+  meta_pool->datasize = 0;
+  meta_pool->csize = CANARY_SIZE;
+  // meta_pool[0].canary = 0;
+  meta_pool->next = NULL;
 }
 void init_datapool(void) {
   void *reserved =
@@ -64,7 +67,7 @@ void assign_meta_block_to_data_as_free(struct metadata_t *meta_pool, void *ptr,
   meta_pool->state = FREE;
   meta_pool->data = ptr;
   meta_pool->datasize = size;
-  meta_pool->csize = 0;
+  meta_pool->csize = CANARY_SIZE;
 }
 
 // Creation d'un block de metadata
@@ -76,11 +79,10 @@ struct metadata_t *add_new_metadata_block() {
   }
 
   struct metadata_t *new_block = current + 1;
-
   new_block->data = NULL;
   new_block->state = NONE;
   new_block->datasize = 0;
-  new_block->csize = 0;
+  new_block->csize = CANARY_SIZE;
   // new_block->canary = NULL;
   new_block->next = NULL;
 
@@ -100,19 +102,18 @@ struct metadata_t *check_if_a_metablock_is_free(size_t size) {
     }
     current = current->next;
   }
-  
-  if (current->datasize >= size && current->state == FREE){
+
+  if (current->datasize >= size && current->state == FREE) {
     return current;
   }
   return NULL;
 }
 
-size_t get_remain_size_of_metapool(){
+size_t get_remain_size_of_metapool() {
   size_t size_occupied = 0;
   struct metadata_t *current = meta_pool;
 
-  while (current->next != NULL)
-  {
+  while (current->next != NULL) {
     size_occupied += struct_size;
     current = current->next;
   }
@@ -122,12 +123,11 @@ size_t get_remain_size_of_metapool(){
   return meta_size - size_occupied;
 }
 
-size_t get_remain_size_of_datapool(){
+size_t get_remain_size_of_datapool() {
   size_t size_occupied = 0;
   struct metadata_t *current = meta_pool;
 
-  while (current->next != NULL)
-  {
+  while (current->next != NULL) {
     size_occupied += current->datasize;
     size_occupied += current->csize;
     current = current->next;
@@ -139,54 +139,124 @@ size_t get_remain_size_of_datapool(){
   return data_size - size_occupied;
 }
 
-void *my_malloc(size_t size) {
-  // Si nos pool n'ont jamais ete allouer alors on cree nos pool
-  if (meta_pool == NULL && data_pool == NULL){
-    init_metapool();
-    init_datapool();
-  }
+void *search_where_data_block_pointer_is(enum state_of_block_t state) {
+  size_t step = 0;
+  struct metadata_t *current = meta_pool;
+  void *pointer_to_data_block;
+  // Comme c'est un nouveau bloc cree il est automatiquement cree a la fin du
+  // pool
+  if (state == NEWLY_CREATED) {
+    while (current->next != NULL) {
+      step += current->datasize;
+      step += current->csize;
 
-  // Avant d'allouer on verifie si un block est disponible pour la taille demande
-  struct metadata_t *free_block = check_if_a_metablock_is_free(size);
+      current = current->next;
+    }
+    pointer_to_data_block = data_pool + step;
+
+    return pointer_to_data_block;
+  } else if (state == ASSOCIATED) {
+    /*TODO
+     * A Faire la recherche du pointer vers le bloc free, techniquement si free
+     * alors deja associer vers un bloc
+     */
+  }
+  return NULL;
+}
+
+uint8_t check_size_of_pool_and_extend(size_t size) {
   size_t remain_size_metapool = get_remain_size_of_metapool();
   size_t remain_size_datapool = get_remain_size_of_datapool();
-
-  //Si oui alors on continue notre allocation
-  if (free_block != NULL){
-    
-  }
-  //Sinon on cree un nouveau bloc mais verifier avant si la taille de nos bloc depasse pas data_size et metadata_size
-  else {
-    if (size >= remain_size_datapool)
-    {
-      // Expend notre pool de data
-      size_t new_data_size = data_size + (size + 512);
-      if (new_data_size >= MAX_DATA_POOL_SIZE)
-      {
-        return NULL;
-      }
-      data_size = new_data_size;
+  if (size >= remain_size_datapool) {
+    // Expend notre pool de data
+    size_t new_data_size = data_size + (size + 512);
+    if (new_data_size >= MAX_DATA_POOL_SIZE) {
+      return 1;
     }
-    if (struct_size >= remain_size_metapool)
-    {
-      //Expend notre pool de metadata
-      size_t new_metadata_size = meta_size + (struct_size + 512);
-      if (new_metadata_size >= MAX_META_POOL_SIZE)
-      {
-        return NULL;
-      }
-      meta_size = new_metadata_size;
+    // remap
+    void *new_data_pool =
+        (void *)mremap(data_pool, data_size, new_data_size, 0);
+    if (new_data_pool == NULL) {
+      return 1;
     }
-    //Cree un nouveau bloc
+
+    data_size = new_data_size; // Redefini la size pour les prochain appel
+    data_pool = new_data_pool; // Redefini la pool pour les prochain appel
+  }
+  if (struct_size >= remain_size_metapool) {
+    // Expend notre pool de metadata
+    size_t new_metadata_size = meta_size + (struct_size + 512);
+    if (new_metadata_size >= MAX_META_POOL_SIZE) {
+      return 1;
+    }
+    // remap
+    struct metadata_t *new_metadata_pool =
+        (struct metadata_t *)mremap(meta_pool, meta_size, new_metadata_size, 0);
+    if (new_metadata_pool == NULL) {
+      return 1;
+    }
+
+    meta_size = new_metadata_size;
+    meta_pool = new_metadata_pool;
   }
 
+  return 0;
+}
 
-  // Cherche un descripteur de libre
-  // Si ya pas cree un nouveau bloc de metadata et on incremente
-  // A chaque fois on verifie que la pool de data est assez grande sinon on
-  // remap Idem pour la metadata
-  (void)size;
-  return NULL;
+void *my_malloc(size_t size) {
+
+  if (size == 0) {
+    return NULL;
+  }
+
+  // Si nos pool n'ont jamais ete init alors on cree nos pool et on alloue les
+  // premiers bloc a notre malloc
+  if (meta_pool == NULL && data_pool == NULL) {
+    init_metapool();
+    init_datapool();
+
+    meta_pool->data = data_pool;
+    meta_pool->state = BUSY;
+    meta_pool->datasize = size;
+
+    return data_pool;
+  }
+
+  // Avant d'allouer on verifie si un block est disponible pour la taille
+  // demande
+  struct metadata_t *free_block = check_if_a_metablock_is_free(size);
+
+  // Si oui alors on continue notre allocation
+  // Sinon on cree un nouveau bloc mais verifier avant si la taille de nos bloc
+  // depasse pas data_size et metadata_size
+  if (free_block == NULL) {
+    uint8_t res = check_size_of_pool_and_extend(size);
+
+    if (res==1){
+      return NULL;
+    }
+
+    // Cree un nouveau bloc
+    struct metadata_t *new_block = add_new_metadata_block();
+    // Chercher ou se trouve notre bloc de data associer
+    enum state_of_block_t new = NEWLY_CREATED;
+    void *data_block = search_where_data_block_pointer_is(new);
+
+    new_block->datasize = size;
+    new_block->state = BUSY;
+    new_block->data = data_block;
+
+    // TODO Ajouter le canary
+
+    return data_block;
+  }
+
+  free_block->state = BUSY;
+  free_block->datasize = size;
+
+  // TODO Ajoute le canary
+
+  return free_block;
 }
 void my_free(void *ptr) { (void)ptr; }
 void *my_calloc(size_t nmemb, size_t size) {

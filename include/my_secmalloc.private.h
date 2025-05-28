@@ -2,6 +2,7 @@
 #define _SECMALLOC_PRIVATE_H
 
 #include "my_secmalloc.h"
+#include <stdint.h>
 
 // sentez vous libre de modifier ce header comme vous le souhaitez
 extern void *data_pool;
@@ -13,6 +14,11 @@ enum state_t{
 	FREE = 1,
 	BUSY = 2
 };
+enum state_of_block_t {
+	NEWLY_CREATED = 0,
+	ASSOCIATED = 1
+};
+
 struct metadata_t
 {
 	void *data; //Pointer vers le block data
@@ -35,6 +41,10 @@ struct metadata_t *check_if_a_metablock_is_free(size_t);
 
 size_t get_remain_size_of_metapool();
 size_t get_remain_size_of_datapool();
+
+void *search_where_data_block_pointer_is(enum state_of_block_t);
+
+uint8_t check_size_of_pool_and_extend(size_t);
 
 void    *my_malloc(size_t size);
 void    my_free(void *ptr);

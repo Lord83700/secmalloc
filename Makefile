@@ -122,6 +122,10 @@ test-check-size: $(TEST_EXEC)
 	@echo "Testing get remaining size of pools..."
 	@./$(TEST_EXEC) --filter='check_remain_size*' --verbose
 
+test-malloc: $(TEST_EXEC)
+	@echo "Testing get remaining size of pools..."
+	@./$(TEST_EXEC) --filter='check_malloc*' --verbose
+
 # Test with LD_PRELOAD
 test-preload: $(DYNAMIC_LIB)
 	@echo "Testing with LD_PRELOAD..."
