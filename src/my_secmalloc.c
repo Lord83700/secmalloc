@@ -109,29 +109,29 @@ struct metadata_t *add_new_metadata_block() {
 }
 
 uint8_t detect_free_space_in_datapool(size_t size, struct metadata_t *current) {
-  printf("Current %p\n", current->next);
+  printf("Current %p\n", current);
+  printf("Current next %p\n", current->next);
+  printf("Current prev %p\n", current->prev);
 
   size_t available = 0;
-
+// Dans le cas ou on est au milieu
+  if (current->next != NULL) {
+    printf("MIDDLE\n");
+    available =
+        (current->next->data) -
+        (current->data + current->datasize + current->csize);
+    printf("Available %ld\n", available);
+  }
   // Check si le premier a pas etait free;
-  if (current->prev == NULL) {
+  if (current->prev == NULL && current != meta_pool) {
     printf("Sub %lu\n", (uintptr_t)current->data - (uintptr_t)data_pool);
     available = current->data - data_pool;
     // Si superieur a 0 notre current n'est pas vraiment le premier bloc et on
     // check si la taille demande peut etre contenu
     printf("Available %ld\n", available);
-    if (available != 0 && available >= size + CANARY_SIZE) {
-      return 1;
-    }
   }
-  // Dans le cas ou on est au milieu
-  if (current->next != NULL && current->prev != NULL) {
-    available =
-        (current->next->data) -
-        (current->prev->data + current->prev->datasize + current->prev->csize);
-    printf("Available %ld\n", available);
-  }
-  if (available >= size + CANARY_SIZE) {
+  if (available!= 0 && available >= size + CANARY_SIZE) {
+    printf("AVAILABLE YOUHOU !\n");
     return 1;
   }
   return 0;
@@ -159,6 +159,7 @@ struct metadata_t *check_if_a_metablock_is_free(size_t size) {
 
   // Si c'est pas le premier on parcours
   while (current->next != NULL) {
+    printf("FIND FREE SPACE\n");
     if (detect_free_space_in_datapool(size, current)) {
       printf("FIND FREE SPACE NOT THE FIRST BLOCK\n");
       // Cree un nouveau bloc de meta data pointant vers l'espace free
@@ -166,12 +167,16 @@ struct metadata_t *check_if_a_metablock_is_free(size_t size) {
         current = current->next;
       }
       struct metadata_t *new = current + 1;
+      printf("NEW %p\n", new);
       new->csize = CANARY_SIZE;
       new->datasize = size;
       new->next = current->next;
       new->prev = current;
+      new->data = current->prev->data + current->prev->datasize + current->prev->csize;
       current->next = new;
       current->prev->next = current;
+
+      printf("THERE IS A NEW\n");
       return new;
     }
     current = current->next;
@@ -211,6 +216,9 @@ void *search_where_data_block_pointer_is() {
   while (current->next != NULL) {
     current = current->next;
   }
+  printf("CURRENT PREV %p\n", current->prev);
+  printf("CURRENT SEARCH %p\n", current);
+  printf("CURRENT NEXT %p\n", current->next);
   ptr = current->prev->data;
   step = current->prev->datasize + current->prev->csize;
 
@@ -285,7 +293,6 @@ void *my_malloc(size_t size) {
   // Avant d'allouer on verifie si un block est disponible pour la taille
   // demande
   struct metadata_t *free_block = check_if_a_metablock_is_free(size);
-  printf("Free block %p\n", free_block);
 
   // Si oui alors on continue notre allocation
   // Sinon on cree un nouveau bloc mais verifier avant si la taille de nos bloc
@@ -310,6 +317,7 @@ void *my_malloc(size_t size) {
     return data_block;
   }
 
+  printf("Free block %p\n", free_block->data);
   free_block->state = BUSY;
   free_block->datasize = size;
 
@@ -323,10 +331,9 @@ void my_free(void *ptr) {
   struct metadata_t *current = meta_pool_addr;
 
   while (current->next != NULL) {
-    printf("CURRENT FREE %p\n",current);
-    printf("PTR FREE %p\n", ptr);
+    // printf("CURRENT FREE %p\n",current);
+    // printf("PTR FREE %p\n", ptr);
     if (current->data == ptr) {
-      printf("Entre FREE\n");
       if (current == meta_pool) { // Si c'est le premier bloc
         current->next->prev =
             current->prev; // Alors on set le next en pseudo premier bloc
@@ -341,11 +348,9 @@ void my_free(void *ptr) {
       //}
       else { // Si c'est un bloc au milieu alors on on link celui d'avant avec
              // celui d'apres
-        printf("Else FREE\n");
-        current->prev->next = current->next->next;
-        current->next->prev = current->prev->prev;
+        current->prev->next = current->next;
+        current->next->prev = current->prev;
       }
-      printf("MEMSET\n");
       memset(ptr, 0, current->datasize);
       memset(current, 0, sizeof(struct metadata_t));
       meta_nb--;

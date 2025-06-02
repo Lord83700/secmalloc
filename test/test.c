@@ -246,7 +246,7 @@ Test(check_malloc,test_init){
   cr_expect(strcmp(my_data_block, "AFTER FREE")==0);
   cr_log_info("[MALLOC] CHAR %s\n", my_data_block);
 }
-Test(check_malloc, with_three_block){
+Test(check_malloc, with_three_block_and_free_second){
   extern struct metadata_t *meta_pool;
   extern void *data_pool;
 
@@ -296,7 +296,7 @@ Test(check_malloc, with_three_block){
   cr_expect(strcmp(new_block, "AFTER FREE")==0);
   cr_log_info("[MALLOC] CHAR %s\n", new_block);
 }
-Test(check_malloc, with_three_block_last_free){
+Test(check_malloc, with_three_block_and_free_last){
   extern struct metadata_t *meta_pool;
   extern void *data_pool;
 
