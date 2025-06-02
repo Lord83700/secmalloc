@@ -133,19 +133,20 @@ Test(check_if_metablock_is_free, test_init) {
   // Setup : crée metapool + datapool
   init_metapool();
   init_datapool();
+  cr_log_info("[ISFREE] DATA POOL %p\n", data_pool);
   struct metadata_t *new_block = add_new_metadata_block();
+  cr_log_info("[ISFREE] Pool init and new block added");
+  cr_log_info("[ISFREE] NEW BLOCK %p\n", new_block);
+  cr_log_info("[ISFREE] FIRST BLOCK %p\n", &meta_pool[0]);
+  cr_log_info("[ISFREE] SECOND BLOCK %p\n", &meta_pool[1]);
 
   // Assigne le premier bloc comme FREE avec de la data
-  assign_meta_block_to_data_as_free(&meta_pool[0], data_pool, 30);
+  //assign_meta_block_to_data_as_free(&meta_pool[0], data_pool, 30);
 
   // Test : cherche un bloc libre de 16 octets
   size_t size_demanded = 16;
   struct metadata_t *found_block = check_if_a_metablock_is_free(size_demanded);
 
-  cr_log_info("[ISFREE] DATA POOL %p\n", data_pool);
-  cr_log_info("[ISFREE] FIRST BLOCK %p\n", &meta_pool[0]);
-  cr_log_info("[ISFREE] SECOND BLOCK %p\n", &meta_pool[1]);
-  cr_log_info("[ISFREE] NEW BLOCK %p\n", new_block);
   cr_log_info("[ISFREE] FOUND BLOCK %p\n", found_block);
   cr_log_info("[ISFREE] DATA SIZE %ld\n", data_size);
 
@@ -205,8 +206,8 @@ Test(check_remain_size, test_init){
   cr_log_info("[SIZE] SIZEOF FIRST BLOCK %ld\n", sizeof(meta_pool[0]));
   cr_log_info("[SIZE] SIZEOF STRUCT %ld\n", sizeof(struct metadata_t));
 
-  cr_expect(remain_size_metapool == meta_size-216);
-  cr_expect(remain_size_datapool == data_size-120);
+  cr_expect(remain_size_metapool == meta_size-240);
+  cr_expect(remain_size_datapool == data_size-216);
 
 }
 Test(check_malloc,test_init){
@@ -233,4 +234,115 @@ Test(check_malloc,test_init){
   my_second_data_block = "Test1313";
   cr_expect(strcmp(my_second_data_block, "Test1313")==0);
   cr_log_info("[MALLOC] SECOND CHAR %s\n", my_second_data_block);
+
+  my_free(my_data_block);
+  cr_log_info("[MALLOC] DATA FREED\n");
+  cr_log_info("[MALLOC] CHAR FREE %s\n", my_data_block);
+
+  my_data_block = my_malloc(42);
+  cr_log_info("[MALLOC] DATA BLOCK %p\n", my_data_block);
+  cr_expect(my_data_block != NULL);
+  my_data_block = strcpy(my_data_block, "AFTER FREE");
+  cr_expect(strcmp(my_data_block, "AFTER FREE")==0);
+  cr_log_info("[MALLOC] CHAR %s\n", my_data_block);
+}
+Test(check_malloc, with_three_block){
+  extern struct metadata_t *meta_pool;
+  extern void *data_pool;
+
+
+  // Init un block
+  char *my_data_block = my_malloc(42);
+
+  cr_log_info("[MALLOC] Meta pool %p\n", meta_pool);
+  cr_log_info("[MALLOC] Data pool %p\n", data_pool);
+  cr_log_info("[MALLOC] DATA BLOCK %p\n", my_data_block);
+  cr_expect(my_data_block != NULL);
+  my_data_block = strcpy(my_data_block, "Test1212");
+  cr_expect(strcmp(my_data_block, "Test1212")==0);
+  cr_log_info("[MALLOC] CHAR %s\n", my_data_block);
+
+  // J'ajoute un block
+  char *my_second_data_block = my_malloc(42);
+
+  cr_log_info("[MALLOC] SECOND METADATA %p\n", &meta_pool[1]);
+  cr_log_info("[MALLOC] SECOND DATA BLOCK %p\n", my_second_data_block);
+  cr_expect(my_second_data_block != NULL);
+  cr_expect(my_second_data_block == (my_data_block + 74));
+
+  my_second_data_block = strcpy(my_second_data_block, "Test1313");
+  cr_expect(strcmp(my_second_data_block, "Test1313")==0);
+  cr_log_info("[MALLOC] SECOND CHAR %s\n", my_second_data_block);
+
+
+  char *my_third_data_block = my_malloc(42);
+  cr_log_info("[MALLOC] THIRD METADATA %p\n", &meta_pool[2]);
+  cr_log_info("[MALLOC] THIRD DATA BLOCK %p\n", my_third_data_block);
+  cr_expect(my_third_data_block != NULL);
+  my_third_data_block = strcpy(my_third_data_block, "Test1414");
+  cr_expect(strcmp(my_third_data_block, "Test1414")==0);
+  cr_log_info("[MALLOC] THIRD CHAR %s\n", my_third_data_block);
+
+
+  my_free(my_second_data_block);
+  cr_log_info("[MALLOC] DATA FREED\n");
+  cr_log_info("[MALLOC] SECOND CHAR FREE %s\n", my_second_data_block);
+  cr_expect(strcmp(my_second_data_block, "")==0);
+
+  char *new_block = my_malloc(42);
+  cr_expect(new_block != NULL);
+  cr_log_info("[MALLOC] NEW DATA BLOCK %p\n", new_block);
+  new_block = strcpy(new_block, "AFTER FREE");
+  cr_expect(strcmp(new_block, "AFTER FREE")==0);
+  cr_log_info("[MALLOC] CHAR %s\n", new_block);
+}
+Test(check_malloc, with_three_block_last_free){
+  extern struct metadata_t *meta_pool;
+  extern void *data_pool;
+
+
+  // Init un block
+  char *my_data_block = my_malloc(42);
+
+  cr_log_info("[MALLOC] Meta pool %p\n", meta_pool);
+  cr_log_info("[MALLOC] Data pool %p\n", data_pool);
+  cr_log_info("[MALLOC] DATA BLOCK %p\n", my_data_block);
+  cr_expect(my_data_block != NULL);
+  my_data_block = strcpy(my_data_block, "Test1212");
+  cr_expect(strcmp(my_data_block, "Test1212")==0);
+  cr_log_info("[MALLOC] CHAR %s\n", my_data_block);
+
+  // J'ajoute un block
+  char *my_second_data_block = my_malloc(42);
+
+  cr_log_info("[MALLOC] SECOND METADATA %p\n", &meta_pool[1]);
+  cr_log_info("[MALLOC] SECOND DATA BLOCK %p\n", my_second_data_block);
+  cr_expect(my_second_data_block != NULL);
+  cr_expect(my_second_data_block == (my_data_block + 74));
+
+  my_second_data_block = strcpy(my_second_data_block, "Test1313");
+  cr_expect(strcmp(my_second_data_block, "Test1313")==0);
+  cr_log_info("[MALLOC] SECOND CHAR %s\n", my_second_data_block);
+
+
+  char *my_third_data_block = my_malloc(42);
+  cr_log_info("[MALLOC] THIRD METADATA %p\n", &meta_pool[2]);
+  cr_log_info("[MALLOC] THIRD DATA BLOCK %p\n", my_third_data_block);
+  cr_expect(my_third_data_block != NULL);
+  my_third_data_block = strcpy(my_third_data_block, "Test1414");
+  cr_expect(strcmp(my_third_data_block, "Test1414")==0);
+  cr_log_info("[MALLOC] THIRD CHAR %s\n", my_third_data_block);
+
+
+  my_free(my_third_data_block);
+  cr_log_info("[MALLOC] DATA FREED\n");
+  cr_log_info("[MALLOC] THIRD CHAR FREE %s\n", my_third_data_block);
+  cr_expect(strcmp(my_third_data_block, "")==0);
+
+  char *new_block = my_malloc(42);
+  cr_expect(new_block != NULL);
+  cr_log_info("[MALLOC] NEW DATA BLOCK %p\n", new_block);
+  new_block = strcpy(new_block, "AFTER FREE");
+  cr_expect(strcmp(new_block, "AFTER FREE")==0);
+  cr_log_info("[MALLOC] CHAR %s\n", new_block);
 }

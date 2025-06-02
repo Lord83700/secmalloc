@@ -14,10 +14,6 @@ enum state_t{
 	FREE = 1,
 	BUSY = 2
 };
-enum state_of_block_t {
-	NEWLY_CREATED = 0,
-	ASSOCIATED = 1
-};
 
 struct metadata_t
 {
@@ -27,7 +23,8 @@ struct metadata_t
 	size_t datasize; //Taille du block de data vers lequel il pointe si alloue uniquement
 	size_t csize; //Taille du canary dans le block
 	unsigned char canary[32]; //TODO: Gestion de l'alignement
-	void *next;
+	struct metadata_t *next;
+	struct metadata_t *prev;
 };
 
 
@@ -42,9 +39,11 @@ struct metadata_t *check_if_a_metablock_is_free(size_t);
 size_t get_remain_size_of_metapool();
 size_t get_remain_size_of_datapool();
 
-void *search_where_data_block_pointer_is(enum state_of_block_t);
+void *search_where_data_block_pointer_is();
 
 uint8_t check_size_of_pool_and_extend(size_t);
+
+uint8_t detect_free_space_in_datapool(size_t, struct metadata_t *);
 
 void    *my_malloc(size_t size);
 void    my_free(void *ptr);

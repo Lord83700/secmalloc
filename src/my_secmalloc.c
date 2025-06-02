@@ -1,13 +1,14 @@
 #define _GNU_SOURCE
 #include "../include/my_secmalloc.private.h"
 #include <alloca.h>
+#include <fcntl.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
-#include <stdint.h>
 #define MAX_META_POOL_SIZE (1 << 30)
 #define MAX_DATA_POOL_SIZE (64l << 30)
 #define CANARY_SIZE 32
@@ -18,13 +19,22 @@ size_t meta_size = 0;
 size_t data_size = 0;
 struct metadata_t *meta_pool = NULL;
 size_t meta_nb = 0;
+struct metadata_t *meta_pool_addr = NULL;
 
-unsigned char *gen_canary(unsigned char *buffer, size_t size) {
-  for (size_t i = 0; i < size; i++) {
-    buffer[i] = 0xDE; // ou pattern de ton choix
+uint8_t gen_canary(unsigned char buffer[CANARY_SIZE]) {
+  int fd = open("/dev/urandom", O_RDONLY);
+  if (fd < 0) {
+    return 1;
   }
 
-  return buffer;
+  ssize_t bytes_read = read(fd, buffer, CANARY_SIZE);
+  close(fd);
+
+  if (bytes_read != CANARY_SIZE) {
+    return 1;
+  }
+
+  return 0;
 }
 
 void init_metapool(void) {
@@ -35,6 +45,7 @@ void init_metapool(void) {
   meta_size = 4096;
 
   meta_pool = (struct metadata_t *)mremap(reserved, (1 << 30), meta_size, 0);
+  meta_pool_addr = meta_pool;
   mprotect(meta_pool, meta_size, PROT_READ | PROT_WRITE);
   meta_nb += 1;
 
@@ -45,6 +56,7 @@ void init_metapool(void) {
   meta_pool->csize = CANARY_SIZE;
   // meta_pool[0].canary = 0;
   meta_pool->next = NULL;
+  meta_pool->prev = NULL;
 }
 void init_datapool(void) {
   void *reserved =
@@ -72,60 +84,112 @@ void assign_meta_block_to_data_as_free(struct metadata_t *meta_pool, void *ptr,
 
 // Creation d'un block de metadata
 struct metadata_t *add_new_metadata_block() {
-  struct metadata_t *current = meta_pool;
-
+  struct metadata_t *current = meta_pool_addr;
+  struct metadata_t *prev = NULL;
   while (current->next != NULL) {
+    prev = current;
     current = current->next;
   }
 
   struct metadata_t *new_block = current + 1;
+  current->next = new_block;
+  current->prev = prev;
+
   new_block->data = NULL;
   new_block->state = NONE;
   new_block->datasize = 0;
   new_block->csize = CANARY_SIZE;
   // new_block->canary = NULL;
   new_block->next = NULL;
-
-  current->next = new_block;
+  new_block->prev = current;
 
   meta_nb++;
 
   return new_block;
 }
 
-struct metadata_t *check_if_a_metablock_is_free(size_t size) {
-  struct metadata_t *current = meta_pool;
+uint8_t detect_free_space_in_datapool(size_t size, struct metadata_t *current) {
+  printf("Current %p\n", current->next);
 
-  while (current->next != NULL) {
-    if (current->datasize >= size && current->state == FREE) {
-      return current;
+  size_t available = 0;
+
+  // Check si le premier a pas etait free;
+  if (current->prev == NULL) {
+    printf("Sub %lu\n", (uintptr_t)current->data - (uintptr_t)data_pool);
+    available = current->data - data_pool;
+    // Si superieur a 0 notre current n'est pas vraiment le premier bloc et on
+    // check si la taille demande peut etre contenu
+    printf("Available %ld\n", available);
+    if (available != 0 && available >= size + CANARY_SIZE) {
+      return 1;
     }
-    current = current->next;
+  }
+  // Dans le cas ou on est au milieu
+  if (current->next != NULL && current->prev != NULL) {
+    available =
+        (current->next->data) -
+        (current->prev->data + current->prev->datasize + current->prev->csize);
+    printf("Available %ld\n", available);
+  }
+  if (available >= size + CANARY_SIZE) {
+    return 1;
+  }
+  return 0;
+}
+
+struct metadata_t *check_if_a_metablock_is_free(size_t size) {
+  struct metadata_t *current = meta_pool_addr;
+
+  // Si c'est le premier bloc on verifie que se soit pas un pseudo premier
+  if (current->next == NULL && current->prev == NULL) {
+    if (detect_free_space_in_datapool(size, current)) {
+      meta_pool->csize = CANARY_SIZE;
+      meta_pool->datasize = size;
+      meta_pool->next = current;
+      meta_pool->prev = current->prev;
+      meta_pool->data = data_pool;
+
+      current->prev = meta_pool;
+
+      meta_pool_addr = meta_pool;
+
+      return meta_pool;
+    }
   }
 
-  if (current->datasize >= size && current->state == FREE) {
-    return current;
+  // Si c'est pas le premier on parcours
+  while (current->next != NULL) {
+    if (detect_free_space_in_datapool(size, current)) {
+      printf("FIND FREE SPACE NOT THE FIRST BLOCK\n");
+      // Cree un nouveau bloc de meta data pointant vers l'espace free
+      while (current->next != NULL) {
+        current = current->next;
+      }
+      struct metadata_t *new = current + 1;
+      new->csize = CANARY_SIZE;
+      new->datasize = size;
+      new->next = current->next;
+      new->prev = current;
+      current->next = new;
+      current->prev->next = current;
+      return new;
+    }
+    current = current->next;
   }
   return NULL;
 }
 
 size_t get_remain_size_of_metapool() {
   size_t size_occupied = 0;
-  struct metadata_t *current = meta_pool;
 
-  while (current->next != NULL) {
-    size_occupied += struct_size;
-    current = current->next;
-  }
-
-  size_occupied += struct_size;
+  size_occupied = struct_size * meta_nb;
 
   return meta_size - size_occupied;
 }
 
 size_t get_remain_size_of_datapool() {
   size_t size_occupied = 0;
-  struct metadata_t *current = meta_pool;
+  struct metadata_t *current = meta_pool_addr;
 
   while (current->next != NULL) {
     size_occupied += current->datasize;
@@ -139,29 +203,20 @@ size_t get_remain_size_of_datapool() {
   return data_size - size_occupied;
 }
 
-void *search_where_data_block_pointer_is(enum state_of_block_t state) {
+void *search_where_data_block_pointer_is() {
+  struct metadata_t *current = meta_pool_addr;
   size_t step = 0;
-  struct metadata_t *current = meta_pool;
+  void *ptr;
   void *pointer_to_data_block;
-  // Comme c'est un nouveau bloc cree il est automatiquement cree a la fin du
-  // pool
-  if (state == NEWLY_CREATED) {
-    while (current->next != NULL) {
-      step += current->datasize;
-      step += current->csize;
-
-      current = current->next;
-    }
-    pointer_to_data_block = data_pool + step;
-
-    return pointer_to_data_block;
-  } else if (state == ASSOCIATED) {
-    /*TODO
-     * A Faire la recherche du pointer vers le bloc free, techniquement si free
-     * alors deja associer vers un bloc
-     */
+  while (current->next != NULL) {
+    current = current->next;
   }
-  return NULL;
+  ptr = current->prev->data;
+  step = current->prev->datasize + current->prev->csize;
+
+  pointer_to_data_block = ptr + step;
+
+  return pointer_to_data_block;
 }
 
 uint8_t check_size_of_pool_and_extend(size_t size) {
@@ -198,6 +253,7 @@ uint8_t check_size_of_pool_and_extend(size_t size) {
 
     meta_size = new_metadata_size;
     meta_pool = new_metadata_pool;
+    meta_pool_addr = meta_pool;
   }
 
   return 0;
@@ -219,34 +275,37 @@ void *my_malloc(size_t size) {
     meta_pool->state = BUSY;
     meta_pool->datasize = size;
 
+    // TODO canary
+    gen_canary(meta_pool->canary);
+    memcpy(data_pool + CANARY_SIZE, meta_pool->canary, CANARY_SIZE);
+
     return data_pool;
   }
 
   // Avant d'allouer on verifie si un block est disponible pour la taille
   // demande
   struct metadata_t *free_block = check_if_a_metablock_is_free(size);
+  printf("Free block %p\n", free_block);
 
   // Si oui alors on continue notre allocation
   // Sinon on cree un nouveau bloc mais verifier avant si la taille de nos bloc
   // depasse pas data_size et metadata_size
   if (free_block == NULL) {
     uint8_t res = check_size_of_pool_and_extend(size);
-
-    if (res==1){
+    if (res == 1) {
       return NULL;
     }
 
     // Cree un nouveau bloc
     struct metadata_t *new_block = add_new_metadata_block();
     // Chercher ou se trouve notre bloc de data associer
-    enum state_of_block_t new = NEWLY_CREATED;
-    void *data_block = search_where_data_block_pointer_is(new);
-
+    void *data_block = search_where_data_block_pointer_is();
     new_block->datasize = size;
     new_block->state = BUSY;
     new_block->data = data_block;
-
     // TODO Ajouter le canary
+    gen_canary(new_block->canary);
+    memcpy(data_block + CANARY_SIZE, new_block->canary, CANARY_SIZE);
 
     return data_block;
   }
@@ -255,10 +314,55 @@ void *my_malloc(size_t size) {
   free_block->datasize = size;
 
   // TODO Ajoute le canary
+  gen_canary(free_block->canary);
+  memcpy(free_block->data + CANARY_SIZE, free_block->canary, CANARY_SIZE);
 
-  return free_block;
+  return free_block->data;
 }
-void my_free(void *ptr) { (void)ptr; }
+void my_free(void *ptr) {
+  struct metadata_t *current = meta_pool_addr;
+
+  while (current->next != NULL) {
+    printf("CURRENT FREE %p\n",current);
+    printf("PTR FREE %p\n", ptr);
+    if (current->data == ptr) {
+      printf("Entre FREE\n");
+      if (current == meta_pool) { // Si c'est le premier bloc
+        current->next->prev =
+            current->prev; // Alors on set le next en pseudo premier bloc
+        meta_pool_addr = current->next;
+      }
+      // else if (current ==
+      //            meta_pool + meta_size -
+      //                sizeof(struct metadata_t)) { // Si c'est le dernier bloc
+      //                                             // (marche pas)
+      //   current->prev->next =
+      //       current->next; // L'avant dernier devient le dernier
+      //}
+      else { // Si c'est un bloc au milieu alors on on link celui d'avant avec
+             // celui d'apres
+        printf("Else FREE\n");
+        current->prev->next = current->next->next;
+        current->next->prev = current->prev->prev;
+      }
+      printf("MEMSET\n");
+      memset(ptr, 0, current->datasize);
+      memset(current, 0, sizeof(struct metadata_t));
+      meta_nb--;
+      break;
+    }
+    current = current->next;
+  }
+
+  // Si on est a la fin
+  if (current->next == NULL && current->prev != NULL && current->data == ptr) {
+    current->prev->next = current->next;
+    memset(ptr, 0, current->datasize);
+    memset(current, 0, sizeof(struct metadata_t));
+    meta_nb--;
+  }
+}
+
 void *my_calloc(size_t nmemb, size_t size) {
   (void)nmemb;
   (void)size;
