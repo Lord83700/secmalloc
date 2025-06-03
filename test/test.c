@@ -346,3 +346,70 @@ Test(check_malloc, with_three_block_and_free_last){
   cr_expect(strcmp(new_block, "AFTER FREE")==0);
   cr_log_info("[MALLOC] CHAR %s\n", new_block);
 }
+Test(check_realloc, test_init){
+  extern struct metadata_t *meta_pool;
+  char *first_block = my_malloc(42);
+  cr_expect(first_block != NULL);
+  char *second_block = my_malloc(42);
+  cr_expect(second_block != NULL);
+  cr_log_info("[REALLOC] SECOND BLOCK %p\n", second_block);
+  char *third_block = my_malloc(42);
+  cr_expect(third_block != NULL);
+
+  char *realloc_block = my_realloc(second_block, 32);
+  cr_log_info("[REALLOC] REALLOC BLOCK %p\n", realloc_block);
+  cr_expect(realloc_block == second_block);
+  cr_log_info("[REALLOC] DATASIZE %ld\n", meta_pool[1].datasize);
+  cr_expect(meta_pool[1].datasize == 32);
+}
+Test(check_realloc, add_with_the_block_at_the_end){
+  extern struct metadata_t *meta_pool;
+  extern void *data_pool;
+  //Add no space left
+  char *first_block = my_malloc(42);
+  cr_expect(first_block != NULL);
+  char *second_block = my_malloc(42);
+  cr_expect(second_block != NULL);
+  char *third_block = my_malloc(42);
+  cr_expect(third_block != NULL);
+  cr_log_info("[REALLOC] THIRD DATA BLOCK %p\n", third_block);
+
+  //Add if the block is at the end
+  char *second_realloc_block = my_realloc(third_block, 53);
+  cr_log_info("[REALLOC] LAST DATA BLOCK %p\n", second_realloc_block);
+  cr_expect(second_realloc_block == third_block);
+  cr_log_info("[REALLOC] DATASIZE %ld\n", meta_pool[2].datasize);
+  cr_expect(meta_pool[2].datasize == 53);
+
+  char *realloc_block = my_realloc(second_block, 68);
+  cr_log_info("[REALLOC] LAST METAPOOL %p\n", &meta_pool[3]);
+  cr_expect(realloc_block == meta_pool[3].data);
+  cr_log_info("[REALLOC] DATASIZE %ld\n", meta_pool[3].datasize);
+  cr_expect(meta_pool[3].datasize == 68);
+
+}
+Test(check_realloc, reduce_and_add){
+  //Reduit et ensuite on ajoute
+  extern struct metadata_t *meta_pool;
+  extern void *data_pool;
+  //Add no space left
+  char *first_block = my_malloc(42);
+  cr_expect(first_block != NULL);
+  char *second_block = my_malloc(42);
+  cr_expect(second_block != NULL);
+  char *third_block = my_malloc(42);
+  cr_expect(third_block != NULL);
+
+  //Reduit de 10
+  char *realloc_block = my_realloc(second_block, 32);
+  cr_expect(realloc_block == second_block);
+  cr_log_info("[REALLOC] DATASIZE %ld\n", meta_pool[1].datasize);
+  cr_expect(meta_pool[1].datasize == 32);
+
+  //Augmente de 10
+  char *second_realloc_block = my_realloc(realloc_block, 42);
+  cr_expect(second_realloc_block == second_block);
+  cr_log_info("[REALLOC] DATASIZE %ld\n", meta_pool[1].datasize);
+  cr_expect(meta_pool[1].datasize == 42);
+  
+}

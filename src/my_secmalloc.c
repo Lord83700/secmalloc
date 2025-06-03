@@ -114,12 +114,11 @@ uint8_t detect_free_space_in_datapool(size_t size, struct metadata_t *current) {
   printf("Current prev %p\n", current->prev);
 
   size_t available = 0;
-// Dans le cas ou on est au milieu pas a la fin
+  // Dans le cas ou on est au milieu pas a la fin
   if (current->next != NULL) {
     printf("MIDDLE\n");
-    available =
-        (current->next->data) -
-        (current->data + current->datasize + current->csize);
+    available = (current->next->data) -
+                (current->data + current->datasize + current->csize);
     printf("Available %ld\n", available);
   }
   // Check si le premier a pas etait free;
@@ -130,7 +129,7 @@ uint8_t detect_free_space_in_datapool(size_t size, struct metadata_t *current) {
     // check si la taille demande peut etre contenu
     printf("Available %ld\n", available);
   }
-  if (available!= 0 && available >= size + CANARY_SIZE) {
+  if (available != 0 && available >= size + CANARY_SIZE) {
     printf("AVAILABLE YOUHOU !\n");
     return 1;
   }
@@ -172,7 +171,8 @@ struct metadata_t *check_if_a_metablock_is_free(size_t size) {
       new->datasize = size;
       new->next = current->next;
       new->prev = current;
-      new->data = current->prev->data + current->prev->datasize + current->prev->csize;
+      new->data =
+          current->prev->data + current->prev->datasize + current->prev->csize;
       current->next = new;
       current->prev->next = current;
 
@@ -265,6 +265,23 @@ uint8_t check_size_of_pool_and_extend(size_t size) {
   }
 
   return 0;
+}
+
+struct metadata_t *find_metablock_associated_to_datablock(void *ptr) {
+  struct metadata_t *current = meta_pool_addr;
+
+  while (current->next != NULL) {
+    if (current->data == ptr) {
+      return current;
+    }
+    current = current->next;
+  }
+  // Check si c'est pas le dernier bloc
+  if (current->data == ptr) {
+    return current;
+  }
+
+  return NULL;
 }
 
 void *my_malloc(size_t size) {
@@ -374,48 +391,68 @@ void *my_calloc(size_t nmemb, size_t size) {
   return NULL;
 }
 
-struct metadata_t *find_metablock_associated_to_datablock(void *ptr){
-  struct metadata_t *current = meta_pool_addr;
-
-  while (current->next != NULL){
-    if (current->data == ptr){
-      return current;
-    }
-    current = current->next;
-  }
-  //Check si c'est pas le dernier bloc
-  if (current->data == ptr){
-    return current;
-  }
-
-  return NULL;
-}
-
 void *my_realloc(void *ptr, size_t size) {
-  if (ptr == NULL){
+  if (ptr == NULL) {
     return my_malloc(size);
   }
-  if (ptr != NULL && size == 0){
+  if (ptr != NULL && size == 0) {
     return NULL;
   }
 
-  //Trouver le bloc
+  // Trouver le bloc
   struct metadata_t *find_block = find_metablock_associated_to_datablock(ptr);
-  if (find_block != NULL){
+  if (find_block != NULL) {
     // Fait notre realloc
-    if (size <= find_block->datasize){
-      //Reduit notre datablock
+    if (size <= find_block->datasize) {
+      // Reduit notre datablock
       find_block->datasize = size;
-      
-      //Deplacer le canary
-      void *canary_pos = find_block->data + data_size + CANARY_SIZE;
+
+      // Deplacer le canary
+      void *canary_pos = find_block->data + find_block->datasize + CANARY_SIZE;
       memcpy(canary_pos, find_block->canary, CANARY_SIZE);
+
+      return find_block->data;
     }
-    if (size >= find_block->datasize){
-      size_t available = (find_block->next->data) - (find_block->data + find_block->datasize + find_block->csize);
+    if (size >= find_block->datasize) {
+      // Si notre bloc est a la fin
+      if (find_block->next == NULL) {
+        uint8_t res = check_size_of_pool_and_extend(size);
+        if (res == 1) {
+          return NULL;
+        }
+        find_block->datasize = size;
+        void *canary_pos =
+            find_block->data + find_block->datasize + CANARY_SIZE;
+        memcpy(canary_pos, find_block->canary, CANARY_SIZE);
 
-      if (available >= (size-find_block->datasize){
+        return find_block->data;
+      } 
+      else {
+        size_t available =
+            (find_block->next->data) -
+            (find_block->data + find_block->datasize + find_block->csize);
+        if (available >= (size - find_block->datasize)) {
+          // Etend
+          find_block->datasize = size;
+          void *canary_pos =
+              find_block->data + find_block->datasize + CANARY_SIZE;
+          memcpy(canary_pos, find_block->canary, CANARY_SIZE);
 
+          return find_block->data;
+        }
+        // Si pas d'espace free on free le bloc actuel et on cree un nouveau
+        // bloc
+        else {
+          void *new_data_block = my_malloc(size);
+          if (new_data_block == NULL) {
+            return NULL;
+          }
+          // Copie les data mais pas le canary car cree auto avec le malloc
+          memcpy(new_data_block, find_block->data, find_block->datasize);
+          my_free(find_block->data);
+
+          return new_data_block;
+        }
       }
     }
   }
