@@ -1,6 +1,6 @@
 # Variables
 CC := gcc
-CFLAGS := -Wall -Wextra -Werror -g3 -std=c99
+CFLAGS := -Wall -Wextra -Werror -g3 -g -std=c99
 CPPFLAGS := -I./include
 LDFLAGS := 
 LDLIBS := 
@@ -136,9 +136,7 @@ test-calloc: $(TEST_EXEC)
 
 run-chrome: $(DYNAMIC_LIB)
 	@echo "Lancement de Chrome avec LD_PRELOAD=$(DYNAMIC_LIB)..."
-	@which google-chrome > /dev/null || { echo "Erreur: Google Chrome introuvable."; exit 1; }
-	@LD_PRELOAD=$(realpath $(DYNAMIC_LIB)) google-chrome --no-sandbox &
-
+	@LD_PRELOAD=$(realpath $(DYNAMIC_LIB)) /opt/google/chrome/google-chrome --no-sandbox &
 
 # Test with LD_PRELOAD
 test-preload: $(DYNAMIC_LIB)

@@ -390,7 +390,7 @@ void *my_realloc(void *ptr, size_t size) {
       find_block->datasize = size;
 
       // Deplacer le canary
-      void *canary_pos = find_block->data + find_block->datasize + CANARY_SIZE;
+      void *canary_pos = find_block->data + find_block->datasize;
       memcpy(canary_pos, find_block->canary, CANARY_SIZE);
 
       return find_block->data;
@@ -404,7 +404,7 @@ void *my_realloc(void *ptr, size_t size) {
         }
         find_block->datasize = size;
         void *canary_pos =
-            find_block->data + find_block->datasize + CANARY_SIZE;
+            find_block->data + find_block->datasize;
         memcpy(canary_pos, find_block->canary, CANARY_SIZE);
 
         return find_block->data;
@@ -416,7 +416,7 @@ void *my_realloc(void *ptr, size_t size) {
           // Etend
           find_block->datasize = size;
           void *canary_pos =
-              find_block->data + find_block->datasize + CANARY_SIZE;
+              find_block->data + find_block->datasize;
           memcpy(canary_pos, find_block->canary, CANARY_SIZE);
 
           return find_block->data;
