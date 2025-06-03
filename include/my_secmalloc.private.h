@@ -31,8 +31,6 @@ struct metadata_t
 void init_metapool(void);
 void init_datapool(void);
 
-void assign_meta_block_to_data_as_free(struct metadata_t *, void *ptr, size_t);
-
 struct metadata_t *add_new_metadata_block();
 struct metadata_t *check_if_a_metablock_is_free(size_t);
 

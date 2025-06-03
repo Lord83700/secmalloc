@@ -50,11 +50,11 @@ $(STATIC_LIB): $(OBJECTS)
 	@echo "Creating static library..."
 	@ar rcs $@ $^
 	@echo "Static library created: $@"
-
+$(DYNAMIC_LIB): CFLAGS += -DDYNAMIC
 # Dynamic library for LD_PRELOAD
 $(DYNAMIC_LIB): $(OBJECTS) | $(LIB_DIR)
 	@echo "Creating dynamic library..."
-	@$(CC) -shared -fPIC $^ -o $@
+	@$(CC) -shared -fPIC $(OBJECTS) -o $@
 	@echo "Dynamic library created: $@"
 
 # Test executable
@@ -106,10 +106,6 @@ test-datapool: $(TEST_EXEC)
 	@echo "Testing datapool initialization..."
 	@./$(TEST_EXEC) --filter='datapool*' --verbose
 
-test-assign: $(TEST_EXEC)
-	@echo "Testing metadata assignment..."
-	@./$(TEST_EXEC) --filter='assign*' --verbose
-
 test-add-block: $(TEST_EXEC)
 	@echo "Testing add new metadata block..."
 	@./$(TEST_EXEC) --filter='add_new_meta_block*' --verbose
@@ -138,7 +134,10 @@ test-calloc: $(TEST_EXEC)
 	@echo "Testing calloc..."
 	@./$(TEST_EXEC) --filter='check_calloc*' --verbose
 
-
+run-chrome: $(DYNAMIC_LIB)
+	@echo "Lancement de Chrome avec LD_PRELOAD=$(DYNAMIC_LIB)..."
+	@which google-chrome > /dev/null || { echo "Erreur: Google Chrome introuvable."; exit 1; }
+	@LD_PRELOAD=$(realpath $(DYNAMIC_LIB)) google-chrome --no-sandbox &
 
 
 # Test with LD_PRELOAD

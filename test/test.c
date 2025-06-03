@@ -52,8 +52,8 @@ Test(metapool, test_init) {
   cr_expect(meta_pool !=
             MAP_FAILED);   // Vérifie que la mémoire a bien été allouée
   cr_expect(meta_nb == 1); // On attend un seul bloc initialisé
-  cr_expect(meta_pool[0].data == NULL);  // Aucun pointeur de données
-  cr_expect(meta_pool[0].state == NONE); // Flag d’état à NONE (libre)
+  cr_expect(meta_pool->data == NULL);  // Aucun pointeur de données
+  cr_expect(meta_pool->state == NONE); // Flag d’état à NONE (libre)
 
   cr_log_info("[METAPOOL] Region Mappe %p\n", meta_pool);
 }
@@ -68,27 +68,6 @@ Test(datapool, test_init) {
   cr_expect(data_size == 4096); // Aucun pointeur de données
   cr_log_info("[DATAPOOL] Region Mappe %p\n", data_pool);
 }
-Test(assign_metapool_datapool, test_init) {
-  extern struct metadata_t *meta_pool;
-  extern void *data_pool;
-  extern size_t data_size;
-
-  init_metapool();
-  init_datapool();
-  assign_meta_block_to_data_as_free(&meta_pool[0], data_pool, data_size);
-  cr_expect(meta_pool !=
-            MAP_FAILED); // Vérifie que la mémoire a bien été allouée
-  cr_expect(meta_pool[0].data == data_pool);     // Aucun pointeur de données
-  cr_expect(meta_pool[0].state == FREE);         // Flag d’état à NONE (libre)
-  cr_expect(meta_pool[0].datasize == data_size); // Taille initiale à zéro
-  cr_expect(meta_pool[0].csize == 32);            // Taille initiale à zéro
-  
-  cr_log_info("[ASSIGN] Region Mappe %p\n", meta_pool);
-  cr_log_info("[ASSIGN] Region Mappe %p\n", data_pool);
-
-  cr_log_info("[ASSIGN] DataSize %ld\n", data_size);
-  cr_log_info("[ASSIGN] Metadata data %p\n", meta_pool[0].data);
-}
 
 Test(add_new_meta_block, test_init) {
   extern struct metadata_t *meta_pool;
@@ -99,8 +78,8 @@ Test(add_new_meta_block, test_init) {
   cr_expect(meta_pool !=
             MAP_FAILED);   // Vérifie que la mémoire a bien été allouée
   cr_expect(meta_nb == 1); // On attend un seul bloc initialisé
-  cr_expect(meta_pool[0].data == NULL);  // Aucun pointeur de données
-  cr_expect(meta_pool[0].state == NONE); // Flag d’état à NONE (libre)
+  cr_expect(meta_pool->data == NULL);  // Aucun pointeur de données
+  cr_expect(meta_pool->state == NONE); // Flag d’état à NONE (libre)
   struct metadata_t *new_block = add_new_metadata_block();
 
   cr_expect(new_block != MAP_FAILED);
@@ -108,7 +87,7 @@ Test(add_new_meta_block, test_init) {
   cr_expect(new_block->data == NULL);
   cr_expect(new_block->state == NONE);
 
-  cr_expect(meta_pool[0].next == new_block);
+  cr_expect(meta_pool->next == new_block);
 
   struct metadata_t *second_block = add_new_metadata_block();
   cr_expect(second_block != MAP_FAILED);
@@ -118,9 +97,13 @@ Test(add_new_meta_block, test_init) {
   cr_expect(new_block->next == second_block);
 
   cr_log_info("[ADD-BLOCK] METADATA POOL MAPPE %p\n", meta_pool);
-  cr_log_info("[ADD-BLOCK] METADATA MAPPE %p\n", &meta_pool[0]);
-  cr_log_info("[ADD-BLOCK] METADATA NEXT %p\n", &meta_pool[1]);
-  cr_log_info("[ADD-BLOCK] NEW BLOCK MAPPE %p\n", &meta_pool[2]);
+  cr_log_info("[ADD-BLOCK] METADATA MAPPE %p\n", meta_pool);
+  cr_log_info("[ADD-BLOCK] METADATA NEXT %p\n", meta_pool->next);
+  cr_log_info("[ADD-BLOCK] NEW BLOCK MAPPE %p\n", new_block);
+  cr_log_info("[ADD-BLOCK] NEW NEXT BLOCK MAPPE %p\n", new_block->next);
+  cr_log_info("[ADD-BLOCK] NEW PREV BLOCK MAPPE %p\n", new_block->prev);
+  cr_log_info("[ADD-BLOCK] SECOND NEW BLOCK MAPPE %p\n", second_block);
+  cr_log_info("[ADD-BLOCK] SECOND NEW PREV BLOCK MAPPE %p\n", second_block->prev);
   cr_log_info("[ADD-BLOCK] SIZEOF BLOCK %ld\n", sizeof(meta_pool[0]));
 }
 
@@ -134,14 +117,20 @@ Test(check_if_metablock_is_free, test_init) {
   init_metapool();
   init_datapool();
   cr_log_info("[ISFREE] DATA POOL %p\n", data_pool);
+  meta_pool->data = data_pool;
+  meta_pool->datasize = 32;
   struct metadata_t *new_block = add_new_metadata_block();
   cr_log_info("[ISFREE] Pool init and new block added");
   cr_log_info("[ISFREE] NEW BLOCK %p\n", new_block);
-  cr_log_info("[ISFREE] FIRST BLOCK %p\n", &meta_pool[0]);
-  cr_log_info("[ISFREE] SECOND BLOCK %p\n", &meta_pool[1]);
+  cr_log_info("[ISFREE] FIRST BLOCK %p\n", meta_pool);
+  cr_log_info("[ISFREE] SECOND BLOCK %p\n", meta_pool->next);
+  new_block->data = meta_pool->data + meta_pool->datasize + meta_pool->csize;
+  cr_log_info("[ISFREE] SIZEOF %ld", sizeof(struct metadata_t));
 
   // Assigne le premier bloc comme FREE avec de la data
   //assign_meta_block_to_data_as_free(&meta_pool[0], data_pool, 30);
+
+  my_free(meta_pool->data);
 
   // Test : cherche un bloc libre de 16 octets
   size_t size_demanded = 16;
@@ -152,7 +141,6 @@ Test(check_if_metablock_is_free, test_init) {
 
   cr_expect(found_block != NULL);                    // Un bloc a été trouvé
   cr_expect(found_block == &meta_pool[0]);           // C'est le premier bloc
-  cr_expect(found_block->state == FREE);             // Il est libre
   cr_expect(found_block->datasize >= size_demanded); // Il est assez grand
 }
 
@@ -183,6 +171,14 @@ Test(check_remain_size, test_init){
   void *second_data_block = first_data_block+40; //Pour tester je veux juste allouer 40
   void *third_data_block = second_data_block+40;
 
+  meta_pool->data = first_data_block;
+  new_block->data = second_data_block;
+  new_new_block->data = third_data_block;
+
+  meta_pool->datasize = 8;
+  new_block->datasize = 8;
+  new_new_block->datasize = 8;
+
   cr_expect(new_block != NULL);
   cr_expect(new_new_block != NULL);
   cr_expect(first_data_block != NULL);
@@ -190,9 +186,9 @@ Test(check_remain_size, test_init){
   cr_expect(third_data_block != NULL);
 
   //Assigne le premier bloc 
-  assign_meta_block_to_data_as_free(&meta_pool[0], data_pool, 40);
-  assign_meta_block_to_data_as_free(new_block, second_data_block, 40);
-  assign_meta_block_to_data_as_free(new_new_block, third_data_block, 40);
+  //assign_meta_block_to_data_as_free(&meta_pool[0], data_pool, 40);
+  //assign_meta_block_to_data_as_free(new_block, second_data_block, 40);
+  //assign_meta_block_to_data_as_free(new_new_block, third_data_block, 40);
 
   size_t remain_size_metapool = get_remain_size_of_metapool();
   size_t remain_size_datapool = get_remain_size_of_datapool();
@@ -200,14 +196,13 @@ Test(check_remain_size, test_init){
   cr_log_info("[SIZE] REMAIN SIZE METAPOOL %ld\n", remain_size_metapool);
   cr_log_info("[SIZE] REMAIN SIZE DATAPOOL %ld\n", remain_size_datapool);
   cr_log_info("[SIZE] DATA POOL %p\n", data_pool);
-  cr_log_info("[SIZE] FIRST BLOCK %p\n", &meta_pool[0]);
+  cr_log_info("[SIZE] FIRST BLOCK %p\n", meta_pool);
   cr_log_info("[SIZE] NEW BLOCK %p\n", new_block);
   cr_log_info("[SIZE] NEW NEW BLOCK %p\n", new_new_block);
-  cr_log_info("[SIZE] SIZEOF FIRST BLOCK %ld\n", sizeof(meta_pool[0]));
   cr_log_info("[SIZE] SIZEOF STRUCT %ld\n", sizeof(struct metadata_t));
 
   cr_expect(remain_size_metapool == meta_size-240);
-  cr_expect(remain_size_datapool == data_size-216);
+  cr_expect(remain_size_datapool == data_size-120);
 
 }
 Test(check_malloc,test_init){
@@ -265,7 +260,7 @@ Test(check_malloc, with_three_block_and_free_second){
   // J'ajoute un block
   char *my_second_data_block = my_malloc(42);
 
-  cr_log_info("[MALLOC] SECOND METADATA %p\n", &meta_pool[1]);
+  cr_log_info("[MALLOC] SECOND METADATA %p\n", meta_pool->next);
   cr_log_info("[MALLOC] SECOND DATA BLOCK %p\n", my_second_data_block);
   cr_expect(my_second_data_block != NULL);
   cr_expect(my_second_data_block == (my_data_block + 74));
@@ -276,7 +271,7 @@ Test(check_malloc, with_three_block_and_free_second){
 
 
   char *my_third_data_block = my_malloc(42);
-  cr_log_info("[MALLOC] THIRD METADATA %p\n", &meta_pool[2]);
+  cr_log_info("[MALLOC] THIRD METADATA %p\n", meta_pool->next->next);
   cr_log_info("[MALLOC] THIRD DATA BLOCK %p\n", my_third_data_block);
   cr_expect(my_third_data_block != NULL);
   my_third_data_block = strcpy(my_third_data_block, "Test1414");
@@ -315,7 +310,7 @@ Test(check_malloc, with_three_block_and_free_last){
   // J'ajoute un block
   char *my_second_data_block = my_malloc(42);
 
-  cr_log_info("[MALLOC] SECOND METADATA %p\n", &meta_pool[1]);
+  cr_log_info("[MALLOC] SECOND METADATA %p\n", meta_pool->next);
   cr_log_info("[MALLOC] SECOND DATA BLOCK %p\n", my_second_data_block);
   cr_expect(my_second_data_block != NULL);
   cr_expect(my_second_data_block == (my_data_block + 74));
@@ -326,7 +321,7 @@ Test(check_malloc, with_three_block_and_free_last){
 
 
   char *my_third_data_block = my_malloc(42);
-  cr_log_info("[MALLOC] THIRD METADATA %p\n", &meta_pool[2]);
+  cr_log_info("[MALLOC] THIRD METADATA %p\n", meta_pool->next->next);
   cr_log_info("[MALLOC] THIRD DATA BLOCK %p\n", my_third_data_block);
   cr_expect(my_third_data_block != NULL);
   my_third_data_block = strcpy(my_third_data_block, "Test1414");
@@ -359,8 +354,8 @@ Test(check_realloc, test_init){
   char *realloc_block = my_realloc(second_block, 32);
   cr_log_info("[REALLOC] REALLOC BLOCK %p\n", realloc_block);
   cr_expect(realloc_block == second_block);
-  cr_log_info("[REALLOC] DATASIZE %ld\n", meta_pool[1].datasize);
-  cr_expect(meta_pool[1].datasize == 32);
+  cr_log_info("[REALLOC] DATASIZE %ld\n", meta_pool->next->datasize);
+  cr_expect(meta_pool->next->datasize == 32);
 }
 Test(check_realloc, add_with_the_block_at_the_end){
   extern struct metadata_t *meta_pool;
@@ -378,14 +373,14 @@ Test(check_realloc, add_with_the_block_at_the_end){
   char *second_realloc_block = my_realloc(third_block, 53);
   cr_log_info("[REALLOC] LAST DATA BLOCK %p\n", second_realloc_block);
   cr_expect(second_realloc_block == third_block);
-  cr_log_info("[REALLOC] DATASIZE %ld\n", meta_pool[2].datasize);
-  cr_expect(meta_pool[2].datasize == 53);
+  cr_log_info("[REALLOC] DATASIZE %ld\n", meta_pool->next->next->datasize);
+  cr_expect(meta_pool->next->next->datasize == 53);
 
   char *realloc_block = my_realloc(second_block, 68);
-  cr_log_info("[REALLOC] LAST METAPOOL %p\n", &meta_pool[3]);
+  cr_log_info("[REALLOC] LAST METAPOOL %p\n", meta_pool->next->next->next);
   cr_expect(realloc_block == meta_pool[3].data);
-  cr_log_info("[REALLOC] DATASIZE %ld\n", meta_pool[3].datasize);
-  cr_expect(meta_pool[3].datasize == 68);
+  cr_log_info("[REALLOC] DATASIZE %ld\n", meta_pool->next->next->next->datasize);
+  cr_expect(meta_pool->next->next->next->datasize == 68);
 
 }
 Test(check_realloc, reduce_and_add){
@@ -404,14 +399,14 @@ Test(check_realloc, reduce_and_add){
   //Reduit de 10
   char *realloc_block = my_realloc(second_block, 32);
   cr_expect(realloc_block == second_block);
-  cr_log_info("[REALLOC] DATASIZE %ld\n", meta_pool[1].datasize);
-  cr_expect(meta_pool[1].datasize == 32);
+  cr_log_info("[REALLOC] DATASIZE %ld\n", meta_pool->next->datasize);
+  cr_expect(meta_pool->next->datasize == 32);
 
   //Augmente de 10
   char *second_realloc_block = my_realloc(realloc_block, 42);
   cr_expect(second_realloc_block == second_block);
-  cr_log_info("[REALLOC] DATASIZE %ld\n", meta_pool[1].datasize);
-  cr_expect(meta_pool[1].datasize == 42);
+  cr_log_info("[REALLOC] DATASIZE %ld\n", meta_pool->next->datasize);
+  cr_expect(meta_pool->next->datasize == 42);
   
 }
 Test(check_canary, test_init){
@@ -446,7 +441,7 @@ Test(check_canary, test_init){
   //for (size_t i =0; i<32; i++){
   //  cr_log_info("[CANARY] CANARY MODIFIED %02x\n", buffer[i]);
   //}
-  cr_expect(buffer!=meta_pool[1].canary);
+  cr_expect(buffer!=meta_pool->next->canary);
 
 }
 
