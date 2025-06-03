@@ -130,6 +130,16 @@ test-realloc: $(TEST_EXEC)
 	@echo "Testing realloc..."
 	@./$(TEST_EXEC) --filter='check_realloc*' --verbose
 
+test-canary: $(TEST_EXEC)
+	@echo "Testing canary..."
+	@./$(TEST_EXEC) --filter='check_canary*' --verbose
+
+test-calloc: $(TEST_EXEC)
+	@echo "Testing calloc..."
+	@./$(TEST_EXEC) --filter='check_calloc*' --verbose
+
+
+
 
 # Test with LD_PRELOAD
 test-preload: $(DYNAMIC_LIB)

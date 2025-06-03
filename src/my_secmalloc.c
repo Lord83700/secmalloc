@@ -74,13 +74,13 @@ void init_datapool(void) {
 
 // Assigne apres avoir parcouru notre liste chainer notre block de metadata a un
 // pointer vers la data
-void assign_meta_block_to_data_as_free(struct metadata_t *meta_pool, void *ptr,
-                                       size_t size) {
-  meta_pool->state = FREE;
-  meta_pool->data = ptr;
-  meta_pool->datasize = size;
-  meta_pool->csize = CANARY_SIZE;
-}
+//void assign_meta_block_to_data_as_free(struct metadata_t *meta_pool, void *ptr,
+//                                       size_t size) {
+//  meta_pool->state = FREE;
+//  meta_pool->data = ptr;
+//  meta_pool->datasize = size;
+//  meta_pool->csize = CANARY_SIZE;
+//}
 
 // Creation d'un block de metadata
 struct metadata_t *add_new_metadata_block() {
@@ -302,7 +302,7 @@ void *my_malloc(size_t size) {
 
     // TODO canary
     gen_canary(meta_pool->canary);
-    memcpy(data_pool + CANARY_SIZE, meta_pool->canary, CANARY_SIZE);
+    memcpy(data_pool + meta_pool->datasize, meta_pool->canary, CANARY_SIZE);
 
     return data_pool;
   }
@@ -329,7 +329,7 @@ void *my_malloc(size_t size) {
     new_block->data = data_block;
     // TODO Ajouter le canary
     gen_canary(new_block->canary);
-    memcpy(data_block + CANARY_SIZE, new_block->canary, CANARY_SIZE);
+    memcpy(data_block + new_block->datasize, new_block->canary, CANARY_SIZE);
 
     return data_block;
   }
@@ -340,10 +340,12 @@ void *my_malloc(size_t size) {
 
   // TODO Ajoute le canary
   gen_canary(free_block->canary);
-  memcpy(free_block->data + CANARY_SIZE, free_block->canary, CANARY_SIZE);
+  memcpy(free_block->data + free_block->datasize, free_block->canary,
+         CANARY_SIZE);
 
   return free_block->data;
 }
+
 void my_free(void *ptr) {
   struct metadata_t *current = meta_pool_addr;
 
@@ -386,8 +388,16 @@ void my_free(void *ptr) {
 }
 
 void *my_calloc(size_t nmemb, size_t size) {
-  (void)nmemb;
-  (void)size;
+  if (size != 0 && nmemb > SIZE_MAX / size){
+    return NULL;
+  }
+  size_t total = nmemb * size;
+  void *ptr = my_malloc(total);
+  if (ptr) {
+    memset(ptr, 0, total);
+    return ptr;
+  }
+
   return NULL;
 }
 
@@ -426,8 +436,7 @@ void *my_realloc(void *ptr, size_t size) {
         memcpy(canary_pos, find_block->canary, CANARY_SIZE);
 
         return find_block->data;
-      } 
-      else {
+      } else {
         size_t available =
             (find_block->next->data) -
             (find_block->data + find_block->datasize + find_block->csize);

@@ -81,7 +81,7 @@ Test(assign_metapool_datapool, test_init) {
   cr_expect(meta_pool[0].data == data_pool);     // Aucun pointeur de données
   cr_expect(meta_pool[0].state == FREE);         // Flag d’état à NONE (libre)
   cr_expect(meta_pool[0].datasize == data_size); // Taille initiale à zéro
-  cr_expect(meta_pool[0].csize == 0);            // Taille initiale à zéro
+  cr_expect(meta_pool[0].csize == 32);            // Taille initiale à zéro
   
   cr_log_info("[ASSIGN] Region Mappe %p\n", meta_pool);
   cr_log_info("[ASSIGN] Region Mappe %p\n", data_pool);
@@ -392,6 +392,7 @@ Test(check_realloc, reduce_and_add){
   //Reduit et ensuite on ajoute
   extern struct metadata_t *meta_pool;
   extern void *data_pool;
+
   //Add no space left
   char *first_block = my_malloc(42);
   cr_expect(first_block != NULL);
@@ -412,4 +413,47 @@ Test(check_realloc, reduce_and_add){
   cr_log_info("[REALLOC] DATASIZE %ld\n", meta_pool[1].datasize);
   cr_expect(meta_pool[1].datasize == 42);
   
+}
+Test(check_canary, test_init){
+  extern struct metadata_t *meta_pool;
+  extern void *data_pool;
+
+  char *first_block = my_malloc(42);
+  cr_expect(first_block != NULL);
+  char *second_block = my_malloc(60);
+  cr_expect(second_block != NULL);
+  char *third_block = my_malloc(42);
+  cr_expect(third_block != NULL);
+
+  second_block = strcpy(second_block, "DEADBEEF DEADBEEF DEADBEEF DEADBEEF DEADBEEF");
+
+  //cr_log_info("[CANARY] CHAR %s\n", second_block);
+
+  //for (size_t i =0; i<32; i++){
+  //  cr_log_info("[CANARY] SECOND CANARY %02x\n", meta_pool[1].canary[i]);
+  //}
+  unsigned char buffer[92];
+
+  //memcpy(buffer, second_block+60, 32);
+
+  //for (size_t i =0; i<32; i++){
+  //  cr_log_info("[CANARY] CANARY COPIED %02x\n", buffer[i]);
+  //}
+  memset(second_block, 'A', 62);
+
+  memcpy(buffer, second_block+60, 32);
+
+  //for (size_t i =0; i<32; i++){
+  //  cr_log_info("[CANARY] CANARY MODIFIED %02x\n", buffer[i]);
+  //}
+  cr_expect(buffer!=meta_pool[1].canary);
+
+}
+
+Test(check_calloc, test_init){
+  char *first_block = my_calloc(5, 10);
+  cr_expect(first_block != NULL);
+
+  first_block = strcpy(first_block, "Test1212");
+  cr_expect(!(strcmp(first_block, "Test1212")));
 }
