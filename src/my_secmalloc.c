@@ -114,7 +114,7 @@ uint8_t detect_free_space_in_datapool(size_t size, struct metadata_t *current) {
   printf("Current prev %p\n", current->prev);
 
   size_t available = 0;
-// Dans le cas ou on est au milieu
+// Dans le cas ou on est au milieu pas a la fin
   if (current->next != NULL) {
     printf("MIDDLE\n");
     available =
@@ -374,9 +374,52 @@ void *my_calloc(size_t nmemb, size_t size) {
   return NULL;
 }
 
+struct metadata_t *find_metablock_associated_to_datablock(void *ptr){
+  struct metadata_t *current = meta_pool_addr;
+
+  while (current->next != NULL){
+    if (current->data == ptr){
+      return current;
+    }
+    current = current->next;
+  }
+  //Check si c'est pas le dernier bloc
+  if (current->data == ptr){
+    return current;
+  }
+
+  return NULL;
+}
+
 void *my_realloc(void *ptr, size_t size) {
-  (void)ptr;
-  (void)size;
+  if (ptr == NULL){
+    return my_malloc(size);
+  }
+  if (ptr != NULL && size == 0){
+    return NULL;
+  }
+
+  //Trouver le bloc
+  struct metadata_t *find_block = find_metablock_associated_to_datablock(ptr);
+  if (find_block != NULL){
+    // Fait notre realloc
+    if (size <= find_block->datasize){
+      //Reduit notre datablock
+      find_block->datasize = size;
+      
+      //Deplacer le canary
+      void *canary_pos = find_block->data + data_size + CANARY_SIZE;
+      memcpy(canary_pos, find_block->canary, CANARY_SIZE);
+    }
+    if (size >= find_block->datasize){
+      size_t available = (find_block->next->data) - (find_block->data + find_block->datasize + find_block->csize);
+
+      if (available >= (size-find_block->datasize){
+
+      }
+    }
+  }
+
   return NULL;
 }
 
