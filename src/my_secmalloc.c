@@ -118,11 +118,17 @@ uint8_t detect_free_space_in_datapool(size_t size, struct metadata_t *current) {
   return 0;
 }
 
+size_t align_size(size_t size){
+  return (size + 7) & ~7;
+}
+
 struct metadata_t *check_if_a_metablock_is_free(size_t size) {
   struct metadata_t *current = meta_pool_addr;
 
+  size = align_size(size);
+
   // Si c'est le premier bloc on verifie que se soit pas un pseudo premier
-  if (current->next == NULL && current->prev == NULL) {
+  if (current->prev == NULL && current->data > data_pool) {
     if (detect_free_space_in_datapool(size, current)) {
       meta_pool->csize = CANARY_SIZE;
       meta_pool->datasize = size;
@@ -265,6 +271,7 @@ void *my_malloc(size_t size) {
     return NULL;
   }
 
+  size = align_size(size);
   // Si nos pool n'ont jamais ete init alors on cree nos pool et on alloue les
   // premiers bloc a notre malloc
   if (meta_pool == NULL && data_pool == NULL) {
@@ -389,6 +396,7 @@ void *my_realloc(void *ptr, size_t size) {
     return NULL;
   }
 
+  size = align_size(size);
   // Trouver le bloc
   struct metadata_t *find_block = find_metablock_associated_to_datablock(ptr);
   if (find_block != NULL) {

@@ -224,7 +224,7 @@ Test(check_malloc,test_init){
 
   cr_log_info("[MALLOC] SECOND DATA BLOCK %p\n", my_second_data_block);
   cr_expect(my_second_data_block != NULL);
-  cr_expect(my_second_data_block == (my_data_block + 74));
+  cr_expect(my_second_data_block == (my_data_block + 80));
 
   my_second_data_block = "Test1313";
   cr_expect(strcmp(my_second_data_block, "Test1313")==0);
@@ -263,7 +263,7 @@ Test(check_malloc, with_three_block_and_free_second){
   cr_log_info("[MALLOC] SECOND METADATA %p\n", meta_pool->next);
   cr_log_info("[MALLOC] SECOND DATA BLOCK %p\n", my_second_data_block);
   cr_expect(my_second_data_block != NULL);
-  cr_expect(my_second_data_block == (my_data_block + 74));
+  cr_expect(my_second_data_block == (my_data_block + 80));
 
   my_second_data_block = strcpy(my_second_data_block, "Test1313");
   cr_expect(strcmp(my_second_data_block, "Test1313")==0);
@@ -313,7 +313,7 @@ Test(check_malloc, with_three_block_and_free_last){
   cr_log_info("[MALLOC] SECOND METADATA %p\n", meta_pool->next);
   cr_log_info("[MALLOC] SECOND DATA BLOCK %p\n", my_second_data_block);
   cr_expect(my_second_data_block != NULL);
-  cr_expect(my_second_data_block == (my_data_block + 74));
+  cr_expect(my_second_data_block == (my_data_block + 80));
 
   my_second_data_block = strcpy(my_second_data_block, "Test1313");
   cr_expect(strcmp(my_second_data_block, "Test1313")==0);
@@ -374,13 +374,13 @@ Test(check_realloc, add_with_the_block_at_the_end){
   cr_log_info("[REALLOC] LAST DATA BLOCK %p\n", second_realloc_block);
   cr_expect(second_realloc_block == third_block);
   cr_log_info("[REALLOC] DATASIZE %ld\n", meta_pool->next->next->datasize);
-  cr_expect(meta_pool->next->next->datasize == 53);
+  cr_expect(meta_pool->next->next->datasize == 56);
 
   char *realloc_block = my_realloc(second_block, 68);
   cr_log_info("[REALLOC] LAST METAPOOL %p\n", meta_pool->next->next->next);
   cr_expect(realloc_block == meta_pool[3].data);
   cr_log_info("[REALLOC] DATASIZE %ld\n", meta_pool->next->next->next->datasize);
-  cr_expect(meta_pool->next->next->next->datasize == 68);
+  cr_expect(meta_pool->next->next->next->datasize == 72);
 
 }
 Test(check_realloc, reduce_and_add){
@@ -406,7 +406,7 @@ Test(check_realloc, reduce_and_add){
   char *second_realloc_block = my_realloc(realloc_block, 42);
   cr_expect(second_realloc_block == second_block);
   cr_log_info("[REALLOC] DATASIZE %ld\n", meta_pool->next->datasize);
-  cr_expect(meta_pool->next->datasize == 42);
+  cr_expect(meta_pool->next->datasize == 48);
   
 }
 Test(check_canary, test_init){
