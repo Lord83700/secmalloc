@@ -1,3 +1,4 @@
+#include <stdint.h>
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
@@ -6,24 +7,6 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <assert.h>
-
-// Si vous utilisez LD_PRELOAD, utilisez les fonctions standard
-// Sinon, incluez votre header et utilisez my_malloc, etc.
-#ifdef USE_SYSTEM_MALLOC
-    // Utilise malloc/free standard pour comparaison
-    #define test_malloc malloc
-    #define test_free free
-    #define test_calloc calloc
-    #define test_realloc realloc
-#else
-    // Utilisez vos fonctions
-    #include "my_secmalloc.private.h"
-    #define test_malloc my_malloc
-    #define test_free my_free
-    #define test_calloc my_calloc
-    #define test_realloc my_realloc
-#endif
-
 #define MAX_ALLOCS 1000
 #define MAX_SIZE 4096
 #define NUM_TESTS 10
@@ -44,7 +27,7 @@ void test_basic_alloc_free() {
     // Allouer
     for (int i = 0; i < 100; i++) {
         size_t size = (i + 1) * 16;
-        ptrs[i] = test_malloc(size);
+        ptrs[i] = malloc(size);
         if (!ptrs[i]) {
             printf("FAIL: malloc(%zu) returned NULL at iteration %d\n", size, i);
             return;
@@ -68,7 +51,7 @@ void test_basic_alloc_free() {
     
     // Libérer dans l'ordre inverse
     for (int i = 99; i >= 0; i--) {
-        test_free(ptrs[i]);
+        free(ptrs[i]);
     }
     
     printf("PASS: Basic allocation/free\n");
@@ -82,7 +65,7 @@ void test_fragmentation() {
     
     // Allouer 50 blocs
     for (int i = 0; i < 50; i++) {
-        ptrs[i] = test_malloc(100);
+        ptrs[i] = malloc(100);
         if (!ptrs[i]) {
             printf("FAIL: malloc(100) returned NULL at iteration %d\n", i);
             return;
@@ -92,13 +75,13 @@ void test_fragmentation() {
     
     // Libérer tous les blocs pairs
     for (int i = 0; i < 50; i += 2) {
-        test_free(ptrs[i]);
+        free(ptrs[i]);
         ptrs[i] = NULL;
     }
     
     // Réallouer dans les trous
     for (int i = 0; i < 50; i += 2) {
-        ptrs[i] = test_malloc(100);
+        ptrs[i] = malloc(100);
         if (!ptrs[i]) {
             printf("FAIL: Reallocation failed at iteration %d\n", i);
             return;
@@ -118,7 +101,7 @@ void test_fragmentation() {
     
     // Nettoyer
     for (int i = 0; i < 50; i++) {
-        if (ptrs[i]) test_free(ptrs[i]);
+        if (ptrs[i]) free(ptrs[i]);
     }
     
     printf("PASS: Fragmentation and reuse\n");
@@ -137,7 +120,7 @@ void test_random_stress() {
         if (active_allocs == 0 || (active_allocs < MAX_ALLOCS && rand() % 2)) {
             // Allouer
             size_t size = 1 + (rand() % MAX_SIZE);
-            void *ptr = test_malloc(size);
+            void *ptr = malloc(size);
             
             if (ptr) {
                 allocs[active_allocs].ptr = ptr;
@@ -161,7 +144,7 @@ void test_random_stress() {
                 }
             }
             
-            test_free(allocs[idx].ptr);
+            free(allocs[idx].ptr);
             
             // Déplacer le dernier élément à cette position
             allocs[idx] = allocs[active_allocs - 1];
@@ -185,7 +168,7 @@ void test_random_stress() {
     
     // Nettoyer les allocations restantes
     for (int i = 0; i < active_allocs; i++) {
-        test_free(allocs[i].ptr);
+        free(allocs[i].ptr);
     }
     
     printf("PASS: Random stress test (%d iterations)\n", 5000);
@@ -196,7 +179,7 @@ void test_calloc() {
     printf("=== Test 4: Calloc test ===\n");
     
     for (int i = 1; i <= 100; i++) {
-        void *ptr = test_calloc(i, sizeof(int));
+        void *ptr = calloc(i, sizeof(int));
         if (!ptr) {
             printf("FAIL: calloc(%d, %zu) returned NULL\n", i, sizeof(int));
             return;
@@ -207,12 +190,12 @@ void test_calloc() {
         for (int j = 0; j < i; j++) {
             if (data[j] != 0) {
                 printf("FAIL: calloc data not zeroed at [%d][%d]\n", i, j);
-                test_free(ptr);
+                free(ptr);
                 return;
             }
         }
         
-        test_free(ptr);
+        free(ptr);
     }
     
     printf("PASS: Calloc test\n");
@@ -223,7 +206,7 @@ void test_realloc() {
     printf("=== Test 5: Realloc test ===\n");
     
     // Test d'expansion
-    char *ptr = (char*)test_malloc(100);
+    char *ptr = (char*)malloc(100);
     if (!ptr) {
         printf("FAIL: Initial malloc failed\n");
         return;
@@ -231,7 +214,7 @@ void test_realloc() {
     
     strcpy(ptr, "Hello, World!");
     
-    ptr = (char*)test_realloc(ptr, 200);
+    ptr = (char*)realloc(ptr, 200);
     if (!ptr) {
         printf("FAIL: realloc expansion failed\n");
         return;
@@ -239,12 +222,12 @@ void test_realloc() {
     
     if (strcmp(ptr, "Hello, World!") != 0) {
         printf("FAIL: Data lost during realloc expansion\n");
-        test_free(ptr);
+        free(ptr);
         return;
     }
     
     // Test de réduction
-    ptr = (char*)test_realloc(ptr, 50);
+    ptr = (char*)realloc(ptr, 50);
     if (!ptr) {
         printf("FAIL: realloc shrinking failed\n");
         return;
@@ -252,11 +235,11 @@ void test_realloc() {
     
     if (strncmp(ptr, "Hello, World!", 13) != 0) {
         printf("FAIL: Data corrupted during realloc shrinking\n");
-        test_free(ptr);
+        free(ptr);
         return;
     }
     
-    test_free(ptr);
+    free(ptr);
     printf("PASS: Realloc test\n");
 }
 
@@ -276,7 +259,7 @@ void test_program_simulation() {
     
     // Simuler la lecture de fichiers
     for (int i = 0; i < 200; i++) {
-        files[i] = (struct file_info*)test_malloc(sizeof(struct file_info));
+        files[i] = (struct file_info*)malloc(sizeof(struct file_info));
         if (!files[i]) {
             printf("FAIL: malloc struct failed at %d\n", i);
             return;
@@ -284,7 +267,7 @@ void test_program_simulation() {
         
         // Allouer des chaînes de tailles variées
         size_t name_len = 10 + (rand() % 50);
-        files[i]->name = (char*)test_malloc(name_len);
+        files[i]->name = (char*)malloc(name_len);
         if (!files[i]->name) {
             printf("FAIL: malloc name failed at %d\n", i);
             return;
@@ -293,7 +276,7 @@ void test_program_simulation() {
         snprintf(files[i]->name, name_len, "file_%d.txt", i);
         
         size_t path_len = 20 + (rand() % 100);
-        files[i]->path = (char*)test_malloc(path_len);
+        files[i]->path = (char*)malloc(path_len);
         if (!files[i]->path) {
             printf("FAIL: malloc path failed at %d\n", i);
             return;
@@ -303,7 +286,7 @@ void test_program_simulation() {
         
         // Métadonnées de taille variable
         size_t meta_size = 64 + (rand() % 256);
-        files[i]->metadata = test_malloc(meta_size);
+        files[i]->metadata = malloc(meta_size);
         if (!files[i]->metadata) {
             printf("FAIL: malloc metadata failed at %d\n", i);
             return;
@@ -331,7 +314,7 @@ void test_program_simulation() {
         size_t new_path_len = 50 + (rand() % 150);
         
         char *old_path = files[idx]->path;
-        files[idx]->path = (char*)test_realloc(files[idx]->path, new_path_len);
+        files[idx]->path = (char*)realloc(files[idx]->path, new_path_len);
         
         if (!files[idx]->path) {
             printf("FAIL: realloc failed during simulation\n");
@@ -342,10 +325,10 @@ void test_program_simulation() {
     // Nettoyer
     for (int i = 0; i < 200; i++) {
         if (files[i]) {
-            test_free(files[i]->name);
-            test_free(files[i]->path);
-            test_free(files[i]->metadata);
-            test_free(files[i]);
+            free(files[i]->name);
+            free(files[i]->path);
+            free(files[i]->metadata);
+            free(files[i]);
         }
     }
     
@@ -357,36 +340,36 @@ void test_edge_cases() {
     printf("=== Test 7: Edge cases ===\n");
     
     // Test malloc(0)
-    void *ptr = test_malloc(0);
+    void *ptr = malloc(0);
     if (ptr != NULL) {
-        test_free(ptr);
+        free(ptr);
     }
     
     // Test free(NULL)
-    test_free(NULL);
+    free(NULL);
     
     // Test realloc(NULL, size) - doit se comporter comme malloc
-    ptr = test_realloc(NULL, 100);
+    ptr = realloc(NULL, 100);
     if (!ptr) {
         printf("FAIL: realloc(NULL, 100) failed\n");
         return;
     }
-    test_free(ptr);
+    free(ptr);
     
     // Test realloc(ptr, 0) - doit se comporter comme free
-    ptr = test_malloc(100);
+    ptr = malloc(100);
     if (!ptr) {
         printf("FAIL: malloc for realloc test failed\n");
         return;
     }
-    ptr = test_realloc(ptr, 0);
+    ptr = realloc(ptr, 0);
     // ptr devrait être NULL maintenant
     
     // Test calloc avec overflow
-    ptr = test_calloc(SIZE_MAX, 2);
+    ptr = calloc(MAX_SIZE, 2);
     if (ptr != NULL) {
         printf("FAIL: calloc should have failed on overflow\n");
-        test_free(ptr);
+        free(ptr);
         return;
     }
     
