@@ -271,6 +271,11 @@ void *my_malloc(size_t size) {
     init_metapool();
     init_datapool();
 
+    uint8_t res = check_size_of_pool_and_extend(size);
+    if (res == 1) {
+      return NULL;
+    }
+
     meta_pool->data = data_pool;
     meta_pool->state = BUSY;
     meta_pool->datasize = size;
@@ -325,6 +330,9 @@ void my_free(void *ptr) {
 
   while (current->next != NULL) {
     if (current->data == ptr) {
+      if (memcmp(ptr + current->datasize, current->canary, CANARY_SIZE) != 0){
+        abort();
+      }
       if (current == meta_pool) { // Si c'est le premier bloc
         current->next->prev =
             current->prev; // Alors on set le next en pseudo premier bloc
