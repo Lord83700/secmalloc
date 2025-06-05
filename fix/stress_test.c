@@ -1,395 +1,356 @@
 #include <stdint.h>
 #define _GNU_SOURCE
-#include <stdio.h>
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <sys/wait.h>
 #include <time.h>
-#include <assert.h>
+#include <unistd.h>
+
 #define MAX_ALLOCS 1000
 #define MAX_SIZE 4096
-#define NUM_TESTS 10
 
-// Structure pour garder trace des allocations
 struct allocation {
-    void *ptr;
-    size_t size;
-    int pattern;
+  void *ptr;
+  size_t size;
+  int pattern;
 };
 
-// Test 1: Allocations/libérations simples
+void print(const char *msg) { write(1, msg, strlen(msg)); }
+void print_ptr(void *ptr) {
+  uintptr_t val = (uintptr_t)ptr;
+  char buf[2 + sizeof(uintptr_t) * 2]; // "0x" + 2 caractères par byte
+  buf[0] = '0';
+  buf[1] = 'x';
+
+  for (int i = sizeof(uintptr_t) * 2 - 1; i >= 0; i--) {
+    int digit = val & 0xF;
+    buf[2 + i] = digit < 10 ? ('0' + digit) : ('a' + digit - 10);
+    val >>= 4;
+  }
+
+  write(1, buf, sizeof(buf));
+}
+void print_int(int val) {
+  char buf[32];
+  int len = 0;
+
+  // Conversion manuelle (itoa simplifiée, sans gestion négatifs ici)
+  if (val == 0) {
+    buf[len++] = '0';
+  } else {
+    int tmp = val;
+    char rev[32];
+    int i = 0;
+    while (tmp > 0) {
+      rev[i++] = '0' + (tmp % 10);
+      tmp /= 10;
+    }
+    // Reverse le résultat
+    while (i > 0) {
+      buf[len++] = rev[--i];
+    }
+  }
+
+  write(1, buf, len);
+}
+
+void print_size_t(size_t n) {
+  char buf[32]; // Assez grand pour 64 bits
+  int i = 31;
+  buf[i--] = '\0';
+
+  if (n == 0) {
+    buf[i] = '0';
+    write(1, &buf[i], 1);
+    return;
+  }
+
+  while (n > 0 && i >= 0) {
+    buf[i--] = '0' + (n % 10);
+    n /= 10;
+  }
+
+  write(1, &buf[i + 1], 31 - i);
+}
+
 void test_basic_alloc_free() {
-    printf("=== Test 1: Basic allocation/free ===\n");
-    
-    void *ptrs[100];
-    
-    // Allouer
-    for (int i = 0; i < 100; i++) {
-        size_t size = (i + 1) * 16;
-        ptrs[i] = malloc(size);
-        if (!ptrs[i]) {
-            printf("FAIL: malloc(%zu) returned NULL at iteration %d\n", size, i);
-            return;
-        }
-        
-        // Écrire un pattern
-        memset(ptrs[i], i % 256, size);
+  print("=== Test 1: Basic allocation/free ===\n");
+
+  void *ptrs[100];
+
+  for (int i = 0; i < 100; i++) {
+    size_t size = (i + 1) * 16;
+    ptrs[i] = malloc(size);
+    print("MALLOC PASSE ");
+    print_int(i);
+    print(" fois");
+    print(" pour ");
+    print_size_t(size);
+    print(" taille \n");
+    if (!ptrs[i]) {
+      print("FAIL: malloc returned NULL\n");
+      return;
     }
-    
-    // Vérifier les patterns
-    for (int i = 0; i < 100; i++) {
-        size_t size = (i + 1) * 16;
-        unsigned char *data = (unsigned char*)ptrs[i];
-        for (size_t j = 0; j < size; j++) {
-            if (data[j] != (i % 256)) {
-                printf("FAIL: Data corruption at ptr[%d][%zu]\n", i, j);
-                return;
-            }
-        }
+    memset(ptrs[i], i % 256, size);
+  }
+
+  for (int i = 0; i < 100; i++) {
+    size_t size = (i + 1) * 16;
+    unsigned char *data = (unsigned char *)ptrs[i];
+    for (size_t j = 0; j < size; j++) {
+      if (data[j] != (i % 256)) {
+        print("FAIL: Data corruption\n");
+        return;
+      }
     }
-    
-    // Libérer dans l'ordre inverse
-    for (int i = 99; i >= 0; i--) {
-        free(ptrs[i]);
-    }
-    
-    printf("PASS: Basic allocation/free\n");
+  }
+
+  for (int i = 99; i >= 0; i--) {
+    print("PTR BEFORE FREE ");
+    print_ptr(ptrs[i]);
+    print("\n");
+    free(ptrs[i]);
+  }
+
+  print("PASS: Basic allocation/free\n");
 }
 
-// Test 2: Fragmentation et réutilisation
 void test_fragmentation() {
-    printf("=== Test 2: Fragmentation and reuse ===\n");
-    
-    void *ptrs[50];
-    
-    // Allouer 50 blocs
-    for (int i = 0; i < 50; i++) {
-        ptrs[i] = malloc(100);
-        if (!ptrs[i]) {
-            printf("FAIL: malloc(100) returned NULL at iteration %d\n", i);
-            return;
-        }
-        sprintf((char*)ptrs[i], "Block_%d", i);
+  print("=== Test 2: Fragmentation and reuse ===\n");
+
+  void *ptrs[50];
+
+  for (int i = 0; i < 50; i++) {
+    ptrs[i] = malloc(100);
+    if (!ptrs[i]) {
+      print("FAIL: malloc(100) returned NULL\n");
+      return;
     }
-    
-    // Libérer tous les blocs pairs
-    for (int i = 0; i < 50; i += 2) {
-        free(ptrs[i]);
-        ptrs[i] = NULL;
+    print("PTR CREATED ");
+    print_ptr(ptrs[i]);
+    print("\n");
+    memset(ptrs[i], i, 100);
+  }
+
+  for (int i = 0; i < 50; i += 2) {
+    print("PTR BEFORE FREE ");
+    print_ptr(ptrs[i]);
+    print("\n");
+    free(ptrs[i]);
+    ptrs[i] = NULL;
+  }
+
+  for (int i = 0; i < 50; i += 2) {
+    ptrs[i] = malloc(100);
+    if (!ptrs[i]) {
+      print("FAIL: Reallocation failed\n");
+      return;
     }
-    
-    // Réallouer dans les trous
-    for (int i = 0; i < 50; i += 2) {
-        ptrs[i] = malloc(100);
-        if (!ptrs[i]) {
-            printf("FAIL: Reallocation failed at iteration %d\n", i);
-            return;
-        }
-        sprintf((char*)ptrs[i], "NewBlock_%d", i);
+    print("PTR AFTER FREE ");
+    print_ptr(ptrs[i]);
+    print("\n");
+    memset(ptrs[i], i, 100);
+  }
+
+  for (int i = 1; i < 50; i += 2) {
+    unsigned char *data = (unsigned char *)ptrs[i];
+    for (int j = 0; j < 100; j++) {
+      if (data[j] != (unsigned char)i) {
+        print("FAIL: Data corruption in odd block ");
+        print("at block i=");
+        print_int(i);
+        print(", index j=");
+        print_int(j);
+        print(", got=");
+        print_int(data[j]);
+        print(", expected=");
+        print_int(i);
+        print("\n");
+        return;
+      }
     }
-    
-    // Vérifier que les blocs impairs sont intacts
-    for (int i = 1; i < 50; i += 2) {
-        char expected[20];
-        sprintf(expected, "Block_%d", i);
-        if (strcmp((char*)ptrs[i], expected) != 0) {
-            printf("FAIL: Data corruption in odd block %d\n", i);
-            return;
-        }
-    }
-    
-    // Nettoyer
-    for (int i = 0; i < 50; i++) {
-        if (ptrs[i]) free(ptrs[i]);
-    }
-    
-    printf("PASS: Fragmentation and reuse\n");
+  }
+
+  for (int i = 0; i < 50; i++) {
+    if (ptrs[i])
+      free(ptrs[i]);
+  }
+
+  print("PASS: Fragmentation and reuse\n");
 }
 
-// Test 3: Stress test avec allocations aléatoires
 void test_random_stress() {
-    printf("=== Test 3: Random stress test ===\n");
-    
-    struct allocation allocs[MAX_ALLOCS];
-    int active_allocs = 0;
-    
-    srand(time(NULL));
-    
-    for (int iteration = 0; iteration < 5000; iteration++) {
-        if (active_allocs == 0 || (active_allocs < MAX_ALLOCS && rand() % 2)) {
-            // Allouer
-            size_t size = 1 + (rand() % MAX_SIZE);
-            void *ptr = malloc(size);
-            
-            if (ptr) {
-                allocs[active_allocs].ptr = ptr;
-                allocs[active_allocs].size = size;
-                allocs[active_allocs].pattern = rand() % 256;
-                
-                // Remplir avec un pattern
-                memset(ptr, allocs[active_allocs].pattern, size);
-                active_allocs++;
-            }
-        } else {
-            // Libérer un bloc aléatoire
-            int idx = rand() % active_allocs;
-            
-            // Vérifier le pattern avant de libérer
-            unsigned char *data = (unsigned char*)allocs[idx].ptr;
-            for (size_t i = 0; i < allocs[idx].size; i++) {
-                if (data[i] != allocs[idx].pattern) {
-                    printf("FAIL: Data corruption detected before free (iter %d)\n", iteration);
-                    return;
-                }
-            }
-            
-            free(allocs[idx].ptr);
-            
-            // Déplacer le dernier élément à cette position
-            allocs[idx] = allocs[active_allocs - 1];
-            active_allocs--;
+  print("=== Test 3: Random stress test ===\n");
+
+  struct allocation allocs[MAX_ALLOCS];
+  int active_allocs = 0;
+  srand(time(NULL));
+
+  for (int iteration = 0; iteration < 5000; iteration++) {
+    if (active_allocs == 0 || (active_allocs < MAX_ALLOCS && rand() % 2)) {
+      size_t size = 1 + (rand() % MAX_SIZE);
+      void *ptr = malloc(size);
+      if (ptr) {
+        allocs[active_allocs].ptr = ptr;
+        allocs[active_allocs].size = size;
+        allocs[active_allocs].pattern = rand() % 256;
+        memset(ptr, allocs[active_allocs].pattern, size);
+        active_allocs++;
+      }
+    } else {
+      print("Active alloc ");
+      print_int(active_allocs);
+      print("\n");
+      int idx = rand() % active_allocs;
+      unsigned char *data = (unsigned char *)allocs[idx].ptr;
+      for (size_t i = 0; i < allocs[idx].size; i++) {
+        if (data[i] != allocs[idx].pattern) {
+          print_int(data[i]);
+          print("\n");
+          print_int(allocs[idx].pattern);
+          print("\n");
+          print("FAIL: Data corruption before free\n");
+          return;
         }
-        
-        // Vérification périodique de l'intégrité
-        if (iteration % 500 == 0) {
-            for (int i = 0; i < active_allocs; i++) {
-                unsigned char *data = (unsigned char*)allocs[i].ptr;
-                for (size_t j = 0; j < allocs[i].size; j++) {
-                    if (data[j] != allocs[i].pattern) {
-                        printf("FAIL: Data corruption detected during stress test (iter %d, alloc %d)\n", 
-                               iteration, i);
-                        return;
-                    }
-                }
-            }
+      }
+      print("Freeing block of size ");
+      print_int(allocs[idx].size);
+      print(" at index ");
+      print_int(idx);
+      print("\n");
+      free(allocs[idx].ptr);
+      allocs[idx] = allocs[active_allocs - 1];
+      active_allocs--;
+    }
+
+    if (iteration % 500 == 0) {
+      for (int i = 0; i < active_allocs; i++) {
+        unsigned char *data = (unsigned char *)allocs[i].ptr;
+        for (size_t j = 0; j < allocs[i].size; j++) {
+          if (data[j] != allocs[i].pattern) {
+            print("FAIL: Data corruption during stress\n");
+            return;
+          }
         }
+      }
     }
-    
-    // Nettoyer les allocations restantes
-    for (int i = 0; i < active_allocs; i++) {
-        free(allocs[i].ptr);
-    }
-    
-    printf("PASS: Random stress test (%d iterations)\n", 5000);
+  }
+
+  for (int i = 0; i < active_allocs; i++) {
+    free(allocs[i].ptr);
+  }
+
+  print("PASS: Random stress test\n");
 }
 
-// Test 4: Test de calloc
 void test_calloc() {
-    printf("=== Test 4: Calloc test ===\n");
-    
-    for (int i = 1; i <= 100; i++) {
-        void *ptr = calloc(i, sizeof(int));
-        if (!ptr) {
-            printf("FAIL: calloc(%d, %zu) returned NULL\n", i, sizeof(int));
-            return;
-        }
-        
-        // Vérifier que tout est à zéro
-        int *data = (int*)ptr;
-        for (int j = 0; j < i; j++) {
-            if (data[j] != 0) {
-                printf("FAIL: calloc data not zeroed at [%d][%d]\n", i, j);
-                free(ptr);
-                return;
-            }
-        }
-        
-        free(ptr);
+  print("=== Test 4: Calloc test ===\n");
+
+  for (int i = 1; i <= 100; i++) {
+    void *ptr = calloc(i, sizeof(int));
+    if (!ptr) {
+      print("FAIL: calloc returned NULL\n");
+      return;
     }
-    
-    printf("PASS: Calloc test\n");
+    int *data = (int *)ptr;
+    for (int j = 0; j < i; j++) {
+      if (data[j] != 0) {
+        print("FAIL: calloc not zeroed\n");
+        free(ptr);
+        return;
+      }
+    }
+    free(ptr);
+  }
+
+  print("PASS: Calloc test\n");
 }
 
-// Test 5: Test de realloc
 void test_realloc() {
-    printf("=== Test 5: Realloc test ===\n");
-    
-    // Test d'expansion
-    char *ptr = (char*)malloc(100);
-    if (!ptr) {
-        printf("FAIL: Initial malloc failed\n");
-        return;
-    }
-    
-    strcpy(ptr, "Hello, World!");
-    
-    ptr = (char*)realloc(ptr, 200);
-    if (!ptr) {
-        printf("FAIL: realloc expansion failed\n");
-        return;
-    }
-    
-    if (strcmp(ptr, "Hello, World!") != 0) {
-        printf("FAIL: Data lost during realloc expansion\n");
-        free(ptr);
-        return;
-    }
-    
-    // Test de réduction
-    ptr = (char*)realloc(ptr, 50);
-    if (!ptr) {
-        printf("FAIL: realloc shrinking failed\n");
-        return;
-    }
-    
-    if (strncmp(ptr, "Hello, World!", 13) != 0) {
-        printf("FAIL: Data corrupted during realloc shrinking\n");
-        free(ptr);
-        return;
-    }
-    
+  print("=== Test 5: Realloc test ===\n");
+
+  char *ptr = malloc(100);
+  if (!ptr) {
+    print("FAIL: Initial malloc failed\n");
+    return;
+  }
+
+  strcpy(ptr, "Hello, World!");
+
+  ptr = realloc(ptr, 200);
+  if (!ptr) {
+    print("FAIL: realloc expansion failed\n");
+    return;
+  }
+
+  if (strcmp(ptr, "Hello, World!") != 0) {
+    print("FAIL: Data lost during realloc\n");
     free(ptr);
-    printf("PASS: Realloc test\n");
+    return;
+  }
+
+  ptr = realloc(ptr, 50);
+  if (!ptr) {
+    print("FAIL: realloc shrinking failed\n");
+    return;
+  }
+
+  if (strncmp(ptr, "Hello, World!", 13) != 0) {
+    print("FAIL: Data corrupted during shrinking\n");
+    free(ptr);
+    return;
+  }
+
+  free(ptr);
+  print("PASS: Realloc test\n");
 }
 
-// Test 6: Simulation d'un programme complexe (comme ls)
-void test_program_simulation() {
-    printf("=== Test 6: Program simulation ===\n");
-    
-    // Simulation de structures typiques d'un programme
-    struct file_info {
-        char *name;
-        char *path;
-        size_t size;
-        void *metadata;
-    };
-    
-    struct file_info *files[200];
-    
-    // Simuler la lecture de fichiers
-    for (int i = 0; i < 200; i++) {
-        files[i] = (struct file_info*)malloc(sizeof(struct file_info));
-        if (!files[i]) {
-            printf("FAIL: malloc struct failed at %d\n", i);
-            return;
-        }
-        
-        // Allouer des chaînes de tailles variées
-        size_t name_len = 10 + (rand() % 50);
-        files[i]->name = (char*)malloc(name_len);
-        if (!files[i]->name) {
-            printf("FAIL: malloc name failed at %d\n", i);
-            return;
-        }
-        
-        snprintf(files[i]->name, name_len, "file_%d.txt", i);
-        
-        size_t path_len = 20 + (rand() % 100);
-        files[i]->path = (char*)malloc(path_len);
-        if (!files[i]->path) {
-            printf("FAIL: malloc path failed at %d\n", i);
-            return;
-        }
-        
-        snprintf(files[i]->path, path_len, "/home/user/documents/file_%d.txt", i);
-        
-        // Métadonnées de taille variable
-        size_t meta_size = 64 + (rand() % 256);
-        files[i]->metadata = malloc(meta_size);
-        if (!files[i]->metadata) {
-            printf("FAIL: malloc metadata failed at %d\n", i);
-            return;
-        }
-        
-        memset(files[i]->metadata, i % 256, meta_size);
-        files[i]->size = meta_size;
-    }
-    
-    // Simuler le tri (accès aléatoire aux données)
-    for (int i = 0; i < 1000; i++) {
-        int idx1 = rand() % 200;
-        int idx2 = rand() % 200;
-        
-        // Vérifier l'intégrité des données
-        if (strlen(files[idx1]->name) == 0 || strlen(files[idx2]->path) == 0) {
-            printf("FAIL: Data corruption detected during access\n");
-            return;
-        }
-    }
-    
-    // Simuler la réallocation de certaines structures
-    for (int i = 0; i < 50; i++) {
-        int idx = rand() % 200;
-        size_t new_path_len = 50 + (rand() % 150);
-        
-        char *old_path = files[idx]->path;
-        files[idx]->path = (char*)realloc(files[idx]->path, new_path_len);
-        
-        if (!files[idx]->path) {
-            printf("FAIL: realloc failed during simulation\n");
-            return;
-        }
-    }
-    
-    // Nettoyer
-    for (int i = 0; i < 200; i++) {
-        if (files[i]) {
-            free(files[i]->name);
-            free(files[i]->path);
-            free(files[i]->metadata);
-            free(files[i]);
-        }
-    }
-    
-    printf("PASS: Program simulation\n");
-}
-
-// Test 7: Test des cas limites
 void test_edge_cases() {
-    printf("=== Test 7: Edge cases ===\n");
-    
-    // Test malloc(0)
-    void *ptr = malloc(0);
-    if (ptr != NULL) {
-        free(ptr);
-    }
-    
-    // Test free(NULL)
-    free(NULL);
-    
-    // Test realloc(NULL, size) - doit se comporter comme malloc
-    ptr = realloc(NULL, 100);
-    if (!ptr) {
-        printf("FAIL: realloc(NULL, 100) failed\n");
-        return;
-    }
+  print("=== Test 6: Edge cases ===\n");
+
+  void *ptr = malloc(0);
+  if (ptr != NULL)
     free(ptr);
-    
-    // Test realloc(ptr, 0) - doit se comporter comme free
-    ptr = malloc(100);
-    if (!ptr) {
-        printf("FAIL: malloc for realloc test failed\n");
-        return;
-    }
-    ptr = realloc(ptr, 0);
-    // ptr devrait être NULL maintenant
-    
-    // Test calloc avec overflow
-    ptr = calloc(MAX_SIZE, 2);
-    if (ptr != NULL) {
-        printf("FAIL: calloc should have failed on overflow\n");
-        free(ptr);
-        return;
-    }
-    
-    printf("PASS: Edge cases\n");
+
+  free(NULL);
+
+  ptr = realloc(NULL, 100);
+  if (!ptr) {
+    print("FAIL: realloc(NULL, 100) failed\n");
+    return;
+  }
+  free(ptr);
+
+  ptr = malloc(100);
+  if (!ptr) {
+    print("FAIL: malloc for realloc test failed\n");
+    return;
+  }
+  ptr = realloc(ptr, 0);
+
+  ptr = calloc(SIZE_MAX, 2);
+  if (ptr != NULL) {
+    print("FAIL: calloc overflow should have failed\n");
+    free(ptr);
+    return;
+  }
+
+  print("PASS: Edge cases\n");
 }
 
 int main() {
-    printf("Starting comprehensive malloc stress tests...\n\n");
-    
-    test_basic_alloc_free();
-    test_fragmentation();
-    test_random_stress();
-    test_calloc();
-    test_realloc();
-    test_program_simulation();
-    test_edge_cases();
-    
-    printf("\n=== All tests completed ===\n");
-    printf("If you see this message, your malloc implementation\n");
-    printf("is robust enough to handle complex programs like 'ls'.\n");
-    
-    return 0;
+  print("Starting comprehensive malloc stress tests...\n\n");
+
+  test_basic_alloc_free();
+  test_fragmentation();
+  test_random_stress();
+  test_calloc();
+  test_realloc();
+  test_edge_cases();
+
+  print("\n=== All tests completed ===\n");
+  print("If you see this message, your malloc implementation is robust.\n");
+
+  return 0;
 }

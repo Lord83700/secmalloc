@@ -47,6 +47,8 @@ struct metadata_t *find_metablock_associated_to_datablock(void *);
 
 size_t align_size(size_t);
 
+struct metadata_t *allocate_new_metadatablock();
+
 void    *my_malloc(size_t size);
 void    my_free(void *ptr);
 void    *my_calloc(size_t nmemb, size_t size);

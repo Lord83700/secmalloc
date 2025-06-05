@@ -20,6 +20,29 @@ size_t data_size = 0;
 struct metadata_t *meta_pool = NULL;
 size_t meta_nb = 0;
 struct metadata_t *meta_pool_addr = NULL;
+size_t offset_metadata = 0;
+
+#include <stdint.h>
+#include <unistd.h>
+
+void print_size_t(size_t n) {
+  char buf[32]; // Assez grand pour 64 bits
+  int i = 31;
+  buf[i--] = '\0';
+
+  if (n == 0) {
+    buf[i] = '0';
+    write(1, &buf[i], 1);
+    return;
+  }
+
+  while (n > 0 && i >= 0) {
+    buf[i--] = '0' + (n % 10);
+    n /= 10;
+  }
+
+  write(1, &buf[i + 1], 31 - i);
+}
 
 uint8_t gen_canary(unsigned char buffer[CANARY_SIZE]) {
   int fd = open("/dev/urandom", O_RDONLY);
@@ -81,7 +104,7 @@ struct metadata_t *add_new_metadata_block() {
     current = current->next;
   }
 
-  struct metadata_t *new_block = current + 1;
+  struct metadata_t *new_block = meta_pool + meta_nb;
   current->next = new_block;
   current->prev = prev;
 
@@ -96,6 +119,14 @@ struct metadata_t *add_new_metadata_block() {
   meta_nb++;
 
   return new_block;
+}
+
+struct metadata_t * allocate_new_metadatablock(){
+
+  struct metadata_t *new = meta_pool + meta_nb;
+  meta_nb++;
+
+  return new;
 }
 
 uint8_t detect_free_space_in_datapool(size_t size, struct metadata_t *current) {
@@ -118,14 +149,10 @@ uint8_t detect_free_space_in_datapool(size_t size, struct metadata_t *current) {
   return 0;
 }
 
-size_t align_size(size_t size){
-  return (size + 7) & ~7;
-}
+size_t align_size(size_t size) { return (size + 7) & ~7; }
 
 struct metadata_t *check_if_a_metablock_is_free(size_t size) {
   struct metadata_t *current = meta_pool_addr;
-
-  size = align_size(size);
 
   // Si c'est le premier bloc on verifie que se soit pas un pseudo premier
   if (current->prev == NULL && current->data > data_pool) {
@@ -146,20 +173,17 @@ struct metadata_t *check_if_a_metablock_is_free(size_t size) {
 
   // Si c'est pas le premier on parcours
   while (current->next != NULL) {
+    //printf("next next %p %p\n", current->next->next, current->next->next->data);
     if (detect_free_space_in_datapool(size, current)) {
       // Cree un nouveau bloc de meta data pointant vers l'espace free
-      while (current->next != NULL) {
-        current = current->next;
-      }
-      struct metadata_t *new = current + 1;
+      struct metadata_t *new = allocate_new_metadatablock();
       new->csize = CANARY_SIZE;
       new->datasize = size;
       new->next = current->next;
       new->prev = current;
       new->data =
-          current->prev->data + current->prev->datasize + current->prev->csize;
+          current->data + current->datasize + current->csize;
       current->next = new;
-      current->prev->next = current;
 
       return new;
     }
@@ -172,6 +196,12 @@ size_t get_remain_size_of_metapool() {
   size_t size_occupied = 0;
 
   size_occupied = struct_size * meta_nb;
+
+  // write(1, "--------\n", 9);
+  // write(1, "SIZE OF METAPOOL ", 17);
+  // print_size_t(meta_size - size_occupied);
+  // write(1, "\n", 1);
+  // write(1, "--------\n", 9);
 
   return meta_size - size_occupied;
 }
@@ -188,6 +218,12 @@ size_t get_remain_size_of_datapool() {
 
   size_occupied += current->datasize;
   size_occupied += current->csize;
+
+  // write(1, "--------\n", 9);
+  // write(1, "SIZE OF DATAPOOL ", 17);
+  // print_size_t(data_size - size_occupied);
+  // write(1, "\n", 1);
+  // write(1, "--------\n", 9);
 
   return data_size - size_occupied;
 }
@@ -213,7 +249,7 @@ uint8_t check_size_of_pool_and_extend(size_t size) {
   size_t remain_size_datapool = get_remain_size_of_datapool();
   if (size >= remain_size_datapool) {
     // Expend notre pool de data
-    size_t new_data_size = data_size + (size + 512);
+    size_t new_data_size = data_size + (size + 51200);
     if (new_data_size >= MAX_DATA_POOL_SIZE) {
       return 1;
     }
@@ -229,7 +265,7 @@ uint8_t check_size_of_pool_and_extend(size_t size) {
   }
   if (struct_size >= remain_size_metapool) {
     // Expend notre pool de metadata
-    size_t new_metadata_size = meta_size + (struct_size + 512);
+    size_t new_metadata_size = meta_size + (struct_size + 51200);
     if (new_metadata_size >= MAX_META_POOL_SIZE) {
       return 1;
     }
@@ -302,8 +338,10 @@ void *my_malloc(size_t size) {
   // Sinon on cree un nouveau bloc mais verifier avant si la taille de nos bloc
   // depasse pas data_size et metadata_size
   if (free_block == NULL) {
+    //   write(1, "Ajout de bloc\n", 14);
     uint8_t res = check_size_of_pool_and_extend(size);
     if (res == 1) {
+      //    write(1, "GROS\n", 5);
       return NULL;
     }
 
@@ -337,45 +375,42 @@ void my_free(void *ptr) {
 
   while (current->next != NULL) {
     if (current->data == ptr) {
-      if (memcmp(ptr + current->datasize, current->canary, CANARY_SIZE) != 0){
+      if (memcmp(ptr + current->datasize, current->canary, CANARY_SIZE) != 0) {
         abort();
       }
-      if (current == meta_pool) { // Si c'est le premier bloc
+      if (current == meta_pool_addr) { // Si c'est le premier bloc
         current->next->prev =
             current->prev; // Alors on set le next en pseudo premier bloc
         meta_pool_addr = current->next;
-      }
-      // else if (current ==
-      //            meta_pool + meta_size -
-      //                sizeof(struct metadata_t)) { // Si c'est le dernier bloc
-      //                                             // (marche pas)
-      //   current->prev->next =
-      //       current->next; // L'avant dernier devient le dernier
-      //}
-      else { // Si c'est un bloc au milieu alors on on link celui d'avant avec
-             // celui d'apres
+      } else { // Si c'est un bloc au milieu alors on on link celui d'avant avec
+               // celui d'apres
         current->prev->next = current->next;
         current->next->prev = current->prev;
       }
-      memset(ptr, 0, current->datasize);
+      memset(ptr, 0, current->datasize + CANARY_SIZE);
       memset(current, 0, sizeof(struct metadata_t));
-      meta_nb--;
       break;
     }
     current = current->next;
   }
 
   // Si on est a la fin
-  if (current->next == NULL && current->prev != NULL && current->data == ptr) {
+  if (current->next == NULL && current->prev != NULL &&current->data == ptr) {
     current->prev->next = current->next;
-    memset(ptr, 0, current->datasize);
+    memset(ptr, 0, current->datasize + CANARY_SIZE);
     memset(current, 0, sizeof(struct metadata_t));
-    meta_nb--;
+  }
+  // Si tout est free meme le dernier bloc
+  if (current->next == NULL && current->prev == NULL && current->data == ptr){
+    memset(ptr, 0, current->datasize + CANARY_SIZE);
+    memset(current, 0, sizeof(struct metadata_t));
+    meta_pool_addr = meta_pool;
+    meta_pool->data = data_pool;
   }
 }
 
 void *my_calloc(size_t nmemb, size_t size) {
-  if (size != 0 && nmemb > SIZE_MAX / size){
+  if (size != 0 && nmemb > SIZE_MAX / size) {
     return NULL;
   }
   size_t total = nmemb * size;
@@ -419,8 +454,7 @@ void *my_realloc(void *ptr, size_t size) {
           return NULL;
         }
         find_block->datasize = size;
-        void *canary_pos =
-            find_block->data + find_block->datasize;
+        void *canary_pos = find_block->data + find_block->datasize;
         memcpy(canary_pos, find_block->canary, CANARY_SIZE);
 
         return find_block->data;
@@ -431,8 +465,7 @@ void *my_realloc(void *ptr, size_t size) {
         if (available >= (size - find_block->datasize)) {
           // Etend
           find_block->datasize = size;
-          void *canary_pos =
-              find_block->data + find_block->datasize;
+          void *canary_pos = find_block->data + find_block->datasize;
           memcpy(canary_pos, find_block->canary, CANARY_SIZE);
 
           return find_block->data;

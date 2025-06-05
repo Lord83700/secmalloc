@@ -134,6 +134,11 @@ test-calloc: $(TEST_EXEC)
 	@echo "Testing calloc..."
 	@./$(TEST_EXEC) --filter='check_calloc*' --verbose
 
+test-free: $(TEST_EXEC)
+	@echo "Testing free..."
+	@./$(TEST_EXEC) --filter='check_free*' --verbose
+
+
 run-chrome: $(DYNAMIC_LIB)
 	@echo "Lancement de Chrome avec LD_PRELOAD=$(DYNAMIC_LIB)..."
 	@LD_PRELOAD=$(realpath $(DYNAMIC_LIB)) /opt/google/chrome/google-chrome --no-sandbox &
