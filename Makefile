@@ -137,19 +137,6 @@ test-calloc: $(TEST_EXEC)
 test-free: $(TEST_EXEC)
 	@echo "Testing free..."
 	@./$(TEST_EXEC) --filter='check_free*' --verbose
-
-
-run-chrome: $(DYNAMIC_LIB)
-	@echo "Lancement de Chrome avec LD_PRELOAD=$(DYNAMIC_LIB)..."
-	@LD_PRELOAD=$(realpath $(DYNAMIC_LIB)) /opt/google/chrome/google-chrome --no-sandbox &
-
-# Test with LD_PRELOAD
-test-preload: $(DYNAMIC_LIB)
-	@echo "Testing with LD_PRELOAD..."
-	@echo "int main(){void*p=malloc(16);free(p);return 0;}" | gcc -x c - -o test_prog
-	@LD_PRELOAD=./$(DYNAMIC_LIB) ./test_prog
-	@rm -f test_prog
-
 clean:
 	@echo "Cleaning..."
 	@rm -rf $(OBJ_DIR) $(STATIC_LIB) $(DYNAMIC_LIB) $(TEST_EXEC)
