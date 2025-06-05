@@ -70,7 +70,6 @@ help:
 	@echo "  static      - Build static library"
 	@echo "  dynamic     - Build dynamic library"
 	@echo "  test        - Build and run all tests"
-	@echo "  tests_run   - Same as test (Epitech convention)"
 	@echo "  debug       - Build with debug info and run specific test"
 	@echo "  clean       - Clean all generated files"
 	@echo "  help        - Show this help"
@@ -82,8 +81,6 @@ dynamic: clean $(DYNAMIC_LIB)
 test: $(TEST_EXEC)
 	@echo "Running tests..."
 	@./$(TEST_EXEC) --verbose
-
-tests_run: test
 
 # Debug target - run specific tests
 debug: $(TEST_EXEC)
