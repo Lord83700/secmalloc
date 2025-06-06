@@ -18,7 +18,7 @@ enum state_t{
 struct metadata_t
 {
 	void *data; //Pointer vers le block data
-	enum state_t state; //Etat du block de metadata
+	//enum state_t state; //Etat du block de metadata
 	//size_t size; //Taille du block de metadata
 	size_t datasize; //Taille du block de data vers lequel il pointe si alloue uniquement
 	size_t csize; //Taille du canary dans le block

@@ -74,7 +74,7 @@ void init_metapool(void) {
 
   // Initie un premier block a 0 pour ensuite les parcourir
   meta_pool->data = NULL;
-  meta_pool->state = NONE;
+  //meta_pool->state = NONE;
   meta_pool->datasize = 0;
   meta_pool->csize = CANARY_SIZE;
   // meta_pool[0].canary = 0;
@@ -109,7 +109,7 @@ struct metadata_t *add_new_metadata_block() {
   current->prev = prev;
 
   new_block->data = NULL;
-  new_block->state = NONE;
+  //new_block->state = NONE;
   new_block->datasize = 0;
   new_block->csize = CANARY_SIZE;
   // new_block->canary = NULL;
@@ -323,7 +323,7 @@ void *my_malloc(size_t size) {
     }
 
     meta_pool->data = data_pool;
-    meta_pool->state = BUSY;
+    //meta_pool->state = BUSY;
     meta_pool->datasize = size;
 
     // TODO canary
@@ -353,7 +353,7 @@ void *my_malloc(size_t size) {
     // Chercher ou se trouve notre bloc de data associer
     void *data_block = search_where_data_block_pointer_is();
     new_block->datasize = size;
-    new_block->state = BUSY;
+    //new_block->state = BUSY;
     new_block->data = data_block;
     // TODO Ajouter le canary
     gen_canary(new_block->canary);
@@ -362,7 +362,7 @@ void *my_malloc(size_t size) {
     return data_block;
   }
 
-  free_block->state = BUSY;
+  //free_block->state = BUSY;
   free_block->datasize = size;
 
   // TODO Ajoute le canary
