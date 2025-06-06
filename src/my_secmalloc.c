@@ -289,6 +289,9 @@ struct metadata_t *find_metablock_associated_to_datablock(void *ptr) {
 
   while (current->next != NULL) {
     if (current->data == ptr) {
+      if (memcmp(ptr + current->datasize, current->canary, CANARY_SIZE) != 0) {
+        abort();
+      }
       return current;
     }
     current = current->next;
